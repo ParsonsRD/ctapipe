@@ -66,6 +66,8 @@ before_install:
     - conda update -q conda
     # Useful for debugging any issues with conda
     - conda info -a
+	# Need to build pyhessio
+    - conda install conda-build
 
     # DOCUMENTATION DEPENDENCIES
     - if [[ $SETUP_CMD == build_sphinx* ]]; then sudo apt-get install graphviz texlive-latex-extra dvipng; fi
