@@ -89,11 +89,6 @@ install:
     - if [[ $SETUP_CMD != egg_info ]] && [[ $ASTROPY_VERSION == development ]]; then $PIP_INSTALL git+http://github.com/astropy/astropy.git#egg=astropy; fi
     - if [[ $SETUP_CMD != egg_info ]] && [[ $ASTROPY_VERSION == stable ]]; then $CONDA_INSTALL astropy; fi
 
-	# PYHESSIO
-    - git clone https://github.com/cta-observatory/pyhessio
-    - cd pyhessio
-    - python setup.py install
-
     # OPTIONAL DEPENDENCIES
     - if [[ $SETUP_CMD != egg_info ]] && $INSTALL_OPTIONAL; then $CONDA_INSTALL h5py scikit-image scikit-learn pandas; fi
 
