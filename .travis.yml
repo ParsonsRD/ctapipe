@@ -66,7 +66,7 @@ before_install:
     - conda update -q conda
     # Useful for debugging any issues with conda
     - conda info -a
-	# Need to build pyhessio
+    # Need to build pyhessio
     - conda install conda-build
 
     # DOCUMENTATION DEPENDENCIES
