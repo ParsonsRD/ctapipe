@@ -76,7 +76,10 @@ before_install:
     - sh -e /etc/init.d/xvfb start
 
     #PYHESSIO DEPENDENCY
-    - sh -x ./.install_pyhessio.sh
+    - source activate  test
+    - git clone https://github.com/cta-observatory/pyhessio
+    - conda build pyhessio
+    - conda install --use-local pyhessio
 
 
 install:
