@@ -65,6 +65,7 @@ before_install:
     - conda config --set always_yes yes --set changeps1 no
     - conda update -q conda
     - conda update --yes conda
+    - conda info -a
     - conda install conda-build
     # Useful for debugging any issues with conda
     - conda info -a
@@ -83,6 +84,7 @@ install:
     # CONDA
     - conda create --yes -n test -c astropy-ci-extras python=$TRAVIS_PYTHON_VERSION
     - source activate test
+    - conda config --add channels http://conda.anaconda.org/jacquemier
 
     # CORE DEPENDENCIES
     - if [[ $SETUP_CMD != egg_info ]]; then $CONDA_INSTALL numpy=$NUMPY_VERSION scipy pytest pip Cython jinja2; fi
@@ -97,15 +99,10 @@ install:
     - if [[ $SETUP_CMD != egg_info ]] && $INSTALL_OPTIONAL; then $CONDA_INSTALL h5py scikit-image scikit-learn pandas; fi
 
     # DOCUMENTATION DEPENDENCIES
-    - if [[ $SETUP_CMD == build_sphinx* ]]; then $CONDA_INSTALL Sphinx matplotlib; fi
+    - if [[ $SETUP_CMD == build_sphinx* ]]; then $CONDA_INSTALL Sphinx matplotlib pyhessio ; fi
 
     # COVERAGE DEPENDENCIES
     - if [[ $SETUP_CMD == 'test --coverage' ]]; then $PIP_INSTALL coverage coveralls; fi
-
-    #PYHESSIO DEPENDENCY
-    - $CONDA_INSTALL -c http://conda.anaconda.org/jacquemier pyhessio
-    - python -c 'import pyhessio'
-
 
 script:
    - export CTAPIPE_EXTRA_DIR=$PWD/ctapipe-extra
