@@ -14,7 +14,7 @@ env:
         - PIP_INSTALL='pip install'
         - INSTALL_OPTIONAL=true
     matrix:
-        - SETUP_CMD='test'
+        - SETUP_CMD='build_sphinx'
 
 matrix:
     include:
@@ -47,12 +47,7 @@ before_install:
     - conda config --set always_yes yes --set changeps1 no
     - conda update -q conda
     - conda info -a
-    - conda config --add channels http://conda.anaconda.org/jacquemier
-    # pyhessio DEPENDENCIES
-    - if [[ $SETUP_CMD == test ]]; then $CONDA_INSTALL pyhessio ; fi
     # Useful for debugging any issues with conda
-    - conda list
-
 
     # Make sure that interactive matplotlib backends work
     - export DISPLAY=:99.0
@@ -66,6 +61,8 @@ install:
     - conda create --yes -n test -c astropy-ci-extras python=$TRAVIS_PYTHON_VERSION
     - source activate test
     - conda config --add channels http://conda.anaconda.org/jacquemier
+    - conda install pyhessio
+    - conda list
 
     # CORE DEPENDENCIES
     - if [[ $SETUP_CMD != egg_info ]]; then $CONDA_INSTALL numpy=$NUMPY_VERSION scipy pytest pip Cython jinja2; fi
