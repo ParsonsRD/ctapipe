@@ -102,11 +102,12 @@ install:
     - if [[ $SETUP_CMD == 'test --coverage' ]]; then $PIP_INSTALL coverage coveralls; fi
 
     #PYHESSIO DEPENDENCY
-    - conda install -c http://conda.anaconda.org/jacquemier pyhessio
+    - $CONDA_INSTALL -c http://conda.anaconda.org/jacquemier pyhessio
 
 
 script:
    - export CTAPIPE_EXTRA_DIR=$PWD/ctapipe-extra
+   - source activate test
    - python setup.py $SETUP_CMD
 
 after_success:
