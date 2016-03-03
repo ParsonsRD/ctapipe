@@ -14,7 +14,7 @@ env:
         - PIP_INSTALL='pip install'
         - INSTALL_OPTIONAL=true
     matrix:
-        - SETUP_CMD='egg_info'
+        - SETUP_CMD='test'
 
 matrix:
     include:
@@ -47,13 +47,12 @@ before_install:
     - hash -r
     - conda config --set always_yes yes --set changeps1 no
     - conda update -q conda
-    - conda update --yes conda
     - conda info -a
-    - conda install conda-build
     # Useful for debugging any issues with conda
     - conda info -a
+    - conda list
 
-    # DOCUMENTATION DEPENDENCIES
+    # pyhessio DEPENDENCIES
     - if [[ $SETUP_CMD == test ]]; then $CONDA_INSTALL pyhessio ; fi
 
     # Make sure that interactive matplotlib backends work
