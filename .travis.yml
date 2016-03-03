@@ -75,8 +75,6 @@ before_install:
     - export DISPLAY=:99.0
     - sh -e /etc/init.d/xvfb start
 
-    #PYHESSIO DEPENDENCY
-    - conda install -c http://conda.anaconda.org/jacquemier pyhessio
 
 
 install:
@@ -102,6 +100,9 @@ install:
 
     # COVERAGE DEPENDENCIES
     - if [[ $SETUP_CMD == 'test --coverage' ]]; then $PIP_INSTALL coverage coveralls; fi
+
+    #PYHESSIO DEPENDENCY
+    - conda install -c http://conda.anaconda.org/jacquemier pyhessio
 
 
 script:
