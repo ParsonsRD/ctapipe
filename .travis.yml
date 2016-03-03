@@ -76,7 +76,7 @@ before_install:
     - sh -e /etc/init.d/xvfb start
 
     #PYHESSIO DEPENDENCY
-    - conda install pyhessio
+    - conda install -c http://conda.anaconda.org/jacquemier pyhessio
 
 
 install:
