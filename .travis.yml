@@ -103,6 +103,7 @@ install:
 
     #PYHESSIO DEPENDENCY
     - $CONDA_INSTALL -c http://conda.anaconda.org/jacquemier pyhessio
+    - python -c 'import pyhessio'
 
 
 script:
