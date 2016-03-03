@@ -48,12 +48,11 @@ before_install:
     - conda update -q conda
     - conda info -a
     - conda config --add channels http://conda.anaconda.org/jacquemier
-    # Useful for debugging any issues with conda
-    - conda info -a
-    - conda list
-
     # pyhessio DEPENDENCIES
     - if [[ $SETUP_CMD == test ]]; then $CONDA_INSTALL pyhessio ; fi
+    # Useful for debugging any issues with conda
+    - conda list
+
 
     # Make sure that interactive matplotlib backends work
     - export DISPLAY=:99.0
