@@ -19,23 +19,6 @@ env:
 matrix:
     include:
 
-        # Do a coverage test in Python 3.
-        - python: 3.4
-          env: SETUP_CMD='test --coverage'
-
-        # Check for sphinx doc build warnings - we do this first because it
-        # may run for a long time
-        - python: 3.4
-          env: SETUP_CMD='build_sphinx -w'
-
-        # Try with optional dependencies disabled
-        - python: 3.4
-          env: SETUP_CMD='test' INSTALL_OPTIONAL=false
-
-        # Try Astropy development version
-        - python: 3.4
-          env: ASTROPY_VERSION=development SETUP_CMD='test'
-
         # Try all python versions with the latest numpy
         - python: 3.4
           env: SETUP_CMD='test'
@@ -71,7 +54,7 @@ before_install:
     - conda info -a
 
     # DOCUMENTATION DEPENDENCIES
-    - if [[ $SETUP_CMD == build_sphinx* ]]; then sudo apt-get install graphviz texlive-latex-extra dvipng; fi
+    - if [[ $SETUP_CMD == test ]]; then $CONDA_INSTALL pyhessio ; fi
 
     # Make sure that interactive matplotlib backends work
     - export DISPLAY=:99.0
@@ -93,7 +76,7 @@ install:
 
     # ASTROPY
     - if [[ $SETUP_CMD != egg_info ]] && [[ $ASTROPY_VERSION == development ]]; then $PIP_INSTALL git+http://github.com/astropy/astropy.git#egg=astropy; fi
-    - if [[ $SETUP_CMD != egg_info ]] && [[ $ASTROPY_VERSION == stable ]]; then $CONDA_INSTALL astropy pyhessio; fi
+    - if [[ $SETUP_CMD != egg_info ]] && [[ $ASTROPY_VERSION == stable ]]; then $CONDA_INSTALL astropy; fi
 
     # OPTIONAL DEPENDENCIES
     - if [[ $SETUP_CMD != egg_info ]] && $INSTALL_OPTIONAL; then $CONDA_INSTALL h5py scikit-image scikit-learn pandas; fi
