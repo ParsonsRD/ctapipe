@@ -6,6 +6,8 @@ Convert the integral pixel ADC count to photo-electrons
 
 import sys
 import numpy as np
+import scipy.ndimage as ndimage
+
 from pyhessio import *
 from ctapipe import io
 from astropy import units as u
@@ -122,7 +124,8 @@ def pixel_integration_mc(event, ped, telid, parameters):
         print(TAG, parameters['integrator'], end="\n")
     if event is None:
         return None
-
+    pixel_adc = pixels_to_array(telid, ped )
+    local_integration_dan(pixel_adc,7,2)
     switch = {
         'full_integration': lambda: full_integration_mc(event, ped, telid),
         'simple_integration': lambda: simple_integration_mc(
@@ -134,12 +137,76 @@ def pixel_integration_mc(event, ped, telid, parameters):
         'nb_peak_integration': lambda: nb_peak_integration_mc(
             event, ped, telid, parameters),
         }
-    try:
-        result = switch[parameters['integrator']]()
-    except KeyError:
-        result = switch[None]()
+   # try:
+   #     result = switch[parameters['integrator']]()
+   # except KeyError:
+    result = 0#switch[None]()
 
     return result
+
+def pixels_to_array(telid,ped):
+    print (telid)
+#    if event is None or telid < 0:
+#        return None
+
+    camInfo = np.zeros((get_num_channel(telid),get_num_pixels(telid),get_num_samples(telid)))
+
+    for igain in range(0, get_num_channel(telid)):
+        samples_pix = get_adc_sample(telid, igain)
+        camInfo[igain] = np.array(samples_pix) - (np.array(ped[igain])[:, np.newaxis]/np.float(samples_pix.shape[1]))
+
+    return camInfo
+
+def full_integration_dan(pixel_adc):
+
+    return np.sum(pixel_adc,axis=2), None
+
+def get_peak_mask(pixel_adc, before_peak, after_peak):
+    peaks = np.argmax(pixel_adc[0], axis=1)
+    mask = np.zeros(pixel_adc[0].shape)
+
+    peaks_before = peaks-before_peak
+    peaks_before[peaks_before <= 0] = 0
+    peaks_after = peaks+after_peak
+    peaks_after[peaks_before > pixel_adc.shape[2]-1] = pixel_adc.shape[2]-1
+
+    for b in range(-1*before_peak,after_peak):
+        if b>=0 and b < pixel_adc.shape[2]-1:
+            0
+
+
+    print(peaks_after-peaks_before)
+    print (pixel_adc[0][peaks_before:peaks_after])
+
+    pixel_adc[0][peaks_before:peaks_after] = 1
+    #print ("here",peaks.shape,pixel_adc.shape,peaks)
+    #peaks = np.argmax(pixel_adc, axis=2)
+    sumN = np.sum(peaks,axis=2)
+    print (sumN)
+
+    #for b in range(-1*before_peak,after_peak):
+    #    print (pixel_adc[peaks])
+    return mask
+
+def local_integration_dan(pixel_adc, nbins, offset):
+    pixel_adc_corr = ndimage.correlate1d(pixel_adc,np.ones(nbins),origin=offset,axis=2,mode="constant")
+    print (np.amax(pixel_adc_corr,axis=2))
+    return np.amax(pixel_adc_corr,axis=2)
+
+    mask = get_peak_mask(pixel_adc, before_peak, after_peak)
+    peaks = np.argmax(pixel_adc, axis=2)
+
+    print(peaks)#peaks = np.zeros([1,2048])
+
+    peaks_before = peaks-before_peak
+    peaks_before[peaks_before < 0] = 0
+    peaks_after = peaks+after_peak
+    peaks_after[peaks_before > pixel_adc.shape[2]-1] = pixel_adc.shape[2]-1
+
+    print(pixel_adc[peaks])
+    sumP = np.sum(pixel_adc[peaks_before:peaks_after])
+    #print(np.sum(pixel_adc*mask,axis=2))
+    return sumP#np.sum(pixel_adc*mask,axis=2), None
 
 
 def full_integration_mc(event, ped, telid):
@@ -475,7 +542,7 @@ def nb_peak_integration_mc(event, ped, telid, parameters):
 
     #  For this integration scheme we need the list of neighbours early on
     pix_x, pix_y = event.meta.pixel_pos[telid]
-    geom = io.CameraGeometry.guess(pix_x*u.m, pix_y*u.m)
+    geom = io.CameraGeometry.guess(pix_x, pix_y)
 
     sum_pix_tel = []
     time_pix_tel = []
@@ -520,7 +587,7 @@ def nb_peak_integration_mc(event, ped, telid, parameters):
             samples_pix_win = get_adc_sample(telid, igain)
             [ipix][start:(nsum+start)]
             ped_per_trace = ped[igain][ipix]/get_num_samples(telid)
-            sum_pix.append(round(int_corr[igain]*(sum(samples_pix_win) -
+            sum_pix.append(np.round(int_corr[igain]*(sum(samples_pix_win) -
                                                   ped_per_trace*nsum)))
             peak_pix.append(peakpos)
 
@@ -556,8 +623,8 @@ def calibrate_amplitude_mc(integrated_charge, calib, telid, params):
         # If the integral charge is between -300,2000 ADC ts, we choose the HG
         # Otherwise the LG channel
         # If there is only one gain, it is the HG (default)
-        if (int_pix_hg > -1000 and int_pix_hg < 10000 or
-        get_num_channel(telid) < 2):
+        print(int_pix_hg.shape)
+        if (int_pix_hg > -1000 and int_pix_hg < 10000 or get_num_channel(telid) < 2):
             pe_pix = (integrated_charge[get_num_channel(telid)-1][ipix] *
             calib[get_num_channel(telid)-1][ipix])
         else:
