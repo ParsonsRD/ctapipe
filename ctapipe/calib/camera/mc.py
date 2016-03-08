@@ -215,7 +215,7 @@ def calibrate_amplitude_mc(integrated_charge, calib, telid,linear_range=[-1000,1
         return None
 
     amplitude = np.zeros(integrated_charge.shape)
-    if get_num_channel(telid) == 1: # If only 1 gain, just multiply everything
+    if get_num_channel(telid) == 2: # If only 1 gain, just multiply everything
         amplitude = integrated_charge * calib * CALIB_SCALE
         return amplitude[0] # return 0th channel (as there is only 1)
     else:
@@ -223,8 +223,9 @@ def calibrate_amplitude_mc(integrated_charge, calib, telid,linear_range=[-1000,1
         valid_last = np.zeros(integrated_charge.shape)
         for i in range(amplitude.shape[0]):# loop over channels
 
-            valid = np.logical_and(np.greater(integrated_charge[i],linear_min),
-                                np.less(integrated_charge[i],linear_max)),not valid_last
+            valid = (integrated_charge[i]>linear_min) and (integrated_charge[i]<linear_max)
+            print (valid)
+
             amplitude = integrated_charge * calib * CALIB_SCALE * valid
             valid_last += valid
     return amplitude[0]
