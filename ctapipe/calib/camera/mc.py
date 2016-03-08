@@ -214,18 +214,23 @@ def calibrate_amplitude_mc(integrated_charge, calib, telid,linear_range=[-1000,1
     if integrated_charge is None:
         return None
 
-    amplitude = np.zeros(integrated_charge.shape)
-    if get_num_channel(telid) == 2: # If only 1 gain, just multiply everything
-        amplitude = integrated_charge * calib * CALIB_SCALE
-        return amplitude[0] # return 0th channel (as there is only 1)
+    amplitude = np.zeros(integrated_charge.shape[1:])
+    if get_num_channel(telid) == 1: # If only 1 gain, just multiply everything
+        amplitude = integrated_charge[0] * calib[0] * CALIB_SCALE
+        return amplitude # return 0th channel (as there is only 1)
     else:
-        amplitude_final = np.zeros(integrated_charge.shape)
-        valid_last = np.zeros(integrated_charge.shape)
+        amplitude_final = np.zeros(integrated_charge.shape[1:])
+        valid_last = np.zeros(integrated_charge.shape[1:])
         for i in range(amplitude.shape[0]):# loop over channels
-
-            valid = (integrated_charge[i]>linear_min) and (integrated_charge[i]<linear_max)
-            print (valid)
-
-            amplitude = integrated_charge * calib * CALIB_SCALE * valid
+            # first check that all elements in this array lie in the linear range
+            valid = np.logical_and(np.greater(integrated_charge[i],linear_min),
+                                np.less(integrated_charge[i],linear_max))
+            #Then check that the amplitude of these pixels has not already been calculated
+            valid = np.logical_and(valid,np.logical_not(valid_last))
+            #Fill final amplitude for only pixels in the linear range
+            print(integrated_charge[i].shape,calib[i].shape,valid.shape)
+            amplitude += integrated_charge[i] * calib[i] * CALIB_SCALE * valid
+            #Add pixels used in this channel to the total
             valid_last += valid
-    return amplitude[0]
+
+    return amplitude
