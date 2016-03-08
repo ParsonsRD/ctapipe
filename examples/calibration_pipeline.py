@@ -11,10 +11,6 @@ from astropy import units as u
 from ctapipe.calib.camera.mc import *
 
 fig = plt.figure(figsize=(16, 7))
-cmaps = [plt.cm.jet, plt.cm.winter,
-         plt.cm.ocean, plt.cm.bone, plt.cm.gist_earth, plt.cm.hot,
-         plt.cm.cool, plt.cm.coolwarm]
-
 
 def display_telescope(event, tel_id):
     global fig
@@ -28,14 +24,15 @@ def display_telescope(event, tel_id):
                     pow(get_mc_event_ycore(), 2))))
     print("\t draw cam {}...".format(tel_id))
     x, y = event.meta.pixel_pos[tel_id]
-    geom = io.CameraGeometry.guess(x * u.m, y * u.m)
+    geom = io.CameraGeometry.guess(x , y)
+
     npads = 1
     # Only create two pads if there is timing information extracted
     # from the calibration
-    if not event.dl1.tel[tel_id].tom is None:
-        npads = 2
+    #if not event.dl1.tel[tel_id].tom is None:
+    #    npads = 2
 
-    ax = plt.subplot(1, npads, npads-1)
+    ax = plt.subplot(1, npads, npads)
     disp = visualization.CameraDisplay(geom, ax=ax,
                                        title="CT{0}".format(tel_id))
 
@@ -46,6 +43,8 @@ def display_telescope(event, tel_id):
     signals = event.dl1.tel[tel_id].pe_charge
     disp.image = signals
     disp.add_colorbar()
+    disp.show()
+
     if npads == 2:
         ax = plt.subplot(1, npads, npads)
         disp = visualization.CameraDisplay(geom,
@@ -108,8 +107,8 @@ def camera_calibration(filename, parameters, disp_args, level):
 
             # Get per telescope the camera geometry
             x, y = event.meta.pixel_pos[telid]
-            geom = io.CameraGeometry.guess(x * u.m, y * u.m)
-
+            geom = io.CameraGeometry.guess(x , y)
+            print (x,y)
             # Get the calibration data sets (pedestals and single-pe)
             ped = get_pedestal(telid)
             calib = get_calibration(telid)
@@ -119,10 +118,10 @@ def camera_calibration(filename, parameters, disp_args, level):
             # for the different algorithms options
             int_adc_pix, peak_adc_pix = pixel_integration_mc(event,
                                                              ped, telid,
-                                                             parameters)
+                                                             )
             # Convert integrated ADC counts into p.e.
             # selecting also the HG/LG channel (currently hard-coded)
-            pe_pix = calibrate_amplitude_mc(int_adc_pix, calib,
+            pe_pix = calibrate_amplitude_mc(int_adc_pix, np.array(calib),
                                             telid, parameters)
             # Including per telescope metadata in the DL1 container
             if telid not in container.meta.pixel_pos:
@@ -130,7 +129,7 @@ def camera_calibration(filename, parameters, disp_args, level):
             container.dl1.tels_with_data = event.dl0.tels_with_data
             container.dl1.tel[telid] = CalibratedCameraData(telid)
             container.dl1.tel[telid].pe_charge = np.array(pe_pix)
-            container.dl1.tel[telid].tom = np.array(peak_adc_pix[0])
+            container.dl1.tel[telid].tom = np.array(pe_pix)#np.array(peak_adc_pix[0])
 
             # FOR THE CTA USERS:
             # From here you can include your code.
@@ -224,7 +223,7 @@ if __name__ == '__main__':
 
     calibrated_camera = camera_calibration(
         args.filename,
-        parameters={"integrator": "nb_peak_integration",
+        parameters={"integrator": "full_integration",
                     "nsum": 7,
                     "nskip": 3,
                     "sigamp": [2, 4],
