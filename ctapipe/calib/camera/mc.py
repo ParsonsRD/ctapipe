@@ -90,7 +90,7 @@ def full_integration(pixel_adc):
     [Gain Channel][pixel number]
 
     """
-    return np.sum(pixel_adc,axis=2), None
+    return np.sum(pixel_adc,axis=2)
 
 def local_peak_integration(pixel_adc, window):
     """
