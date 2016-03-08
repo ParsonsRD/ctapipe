@@ -11,12 +11,12 @@ import scipy.ndimage as ndimage
 from pyhessio import *
 from ctapipe import io
 from astropy import units as u
-from numba import jit
 from time import time
 
 __all__ = [
     'pixel_integration_mc',
     'calibrate_amplitude_mc',
+    'calibrate_tpeak'
 ]
 
 CALIB_SCALE = 0.92
@@ -150,7 +150,7 @@ def global_peak_integration(pixel_adc, window):
 
     return np.sum(pixel_adc,axis=2) #return sum of traces
 
-def neighbour_peak_integration(event,telid,pixel_adc, window):
+def neighbour_peak_integration(event,telid,pixel_adc, window, add_central=False):
     """
     Integrate signal based on the local peak of all ADC counts of neighbouring pixels.
     Loop currently used which may slow things down (not sure how to get round this)
@@ -164,7 +164,8 @@ def neighbour_peak_integration(event,telid,pixel_adc, window):
         pixel ADC traces with dimensions [gain channel][pixel number][ADC bin]
     window: list
         give dimensions of window to be read out in ADC bins (length, offset from peak)
-
+    add_central: bool
+        include the pixel being integrated in the peak determination
     Returns
     -------
     numpy ndarray of integrated signals (in ADC counts) with the dimensions
@@ -183,6 +184,9 @@ def neighbour_peak_integration(event,telid,pixel_adc, window):
     for gain in range(pixel_adc.shape[0]): # loop over gains and pixels (should be eliminated if possible)
         for pixel in range(pixel_adc.shape[1]):
             neighbours = geom.neighbors[pixel] # get list of neighbours
+            if(add_central):
+                neighbours.append(pixel)
+
             peakbin = np.argmax(np.sum(pixel_adc[gain][neighbours],axis=0)) # sum traces of neighbours and find peak bin
             signal[gain][pixel] = pixel_adc_corr[gain][pixel][peakbin] #fill signal with correlated values at peak
 
@@ -228,9 +232,43 @@ def calibrate_amplitude_mc(integrated_charge, calib, telid,linear_range=[-1000,1
             #Then check that the amplitude of these pixels has not already been calculated
             valid = np.logical_and(valid,np.logical_not(valid_last))
             #Fill final amplitude for only pixels in the linear range
-            print(integrated_charge[i].shape,calib[i].shape,valid.shape)
             amplitude += integrated_charge[i] * calib[i] * CALIB_SCALE * valid
             #Add pixels used in this channel to the total
             valid_last += valid
 
     return amplitude
+
+def get_max_bin(integrated_charge):
+    return np.argmax(integrated_charge,axis=2)
+
+def calibrate_tpeak(integrated_charge, offsets, ns_per_bin, peak_method="bin_centre"):
+    """
+    Get peak time from pedestal subtracted traces, and subtract any offset in the
+    peak position for each pixel
+
+    Parameters
+    ----------
+    integrated_charge: numpy array
+        Array of integrated pixel charges in ADC counts with dimensions [gain channel][pixel number]
+    offsets: numpy array
+        Offset of timing for this pixel readout
+    ns_per_bin: float
+        nanoseconds per ADC bin
+    peak_method: string
+        Method used for peak determination
+
+    Returns
+    -------
+    numpy ndarray of peak times of ADC trace
+    [gain channel][pixel number]
+    """
+
+    times = np.zeros(integrated_charge[:-1])
+    if peak_method is "bin_centre":
+        times = get_max_bin(integrated_charge)
+    elif peak_method is "parabola_fit":
+        times = get_max_bin(integrated_charge)
+    elif peak_method is "cwt":
+        times = get_max_bin(integrated_charge)
+
+    return (times + offsets) * ns_per_bin
