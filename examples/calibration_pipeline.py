@@ -9,6 +9,7 @@ from ctapipe.io.containers import RawData, CalibratedCameraData
 from ctapipe import visualization, io
 from astropy import units as u
 from ctapipe.calib.camera.mc import *
+from time import time
 
 fig = plt.figure(figsize=(16, 7))
 
@@ -38,7 +39,7 @@ def display_telescope(event, tel_id):
 
     disp.pixels.set_antialiaseds(False)
     disp.autoupdate = False
-    disp.pixels.set_cmap('seismic')
+    disp.pixels.set_cmap('afmhot')
     chan = 0
     signals = event.dl1.tel[tel_id].pe_charge
     disp.image = signals
@@ -108,7 +109,6 @@ def camera_calibration(filename, parameters, disp_args, level):
             # Get per telescope the camera geometry
             x, y = event.meta.pixel_pos[telid]
             geom = io.CameraGeometry.guess(x , y)
-            print (x,y)
             # Get the calibration data sets (pedestals and single-pe)
             ped = get_pedestal(telid)
             calib = get_calibration(telid)
@@ -116,13 +116,17 @@ def camera_calibration(filename, parameters, disp_args, level):
             # Integrate pixels traces and substract pedestal
             # See pixel_integration_mc function documentation in mc.py
             # for the different algorithms options
-            int_adc_pix, peak_adc_pix = pixel_integration_mc(event,
-                                                             ped, telid,
-                                                             )
+            start = time()
+            int_adc_pix = pixel_integration_mc(event,ped, telid,integration_type="neighbour")
+            print ("Execution time",time()-start)
+
+            #start = time()
+            #int_adc_pix = pixel_integration_mc(event,ped, telid,integration_type="local")
+            #print ("Execution time",time()-start)
+
             # Convert integrated ADC counts into p.e.
             # selecting also the HG/LG channel (currently hard-coded)
-            pe_pix = calibrate_amplitude_mc(int_adc_pix, np.array(calib),
-                                            telid, parameters)
+            pe_pix = calibrate_amplitude_mc(int_adc_pix, np.array(calib),telid)
             # Including per telescope metadata in the DL1 container
             if telid not in container.meta.pixel_pos:
                 container.meta.pixel_pos[telid] = event.meta.pixel_pos[telid]
