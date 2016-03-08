@@ -19,10 +19,12 @@ __all__ = [
 
 CALIB_SCALE = 0.92
 
-def pixel_integration_mc(ped, telid,):
+def pixel_integration_mc(event,ped, telid,):
 
     pixel_adc = pixels_to_array(telid, ped )
-    adc_sum = local_peak_integration(pixel_adc,7,2)
+#    adc_sum = local_peak_integration(pixel_adc,7,2)
+    adc_sum = neighbour_peak_integration(event,telid,pixel_adc,7,2)
+
     #adc_sum = global_peak_integration(pixel_adc,7,2)
     #adc_sum = full_integration_dan(pixel_adc)
 
@@ -57,65 +59,38 @@ def global_peak_integration(pixel_adc, nbins, offset):
 
     return np.sum(pixel_adc,axis=2)
 
-def neighbour_peak_integration_dan(event,pixel_adc, nbins, offset):
+def neighbour_peak_integration(event,telid,pixel_adc, nbins, offset):
+    pixel_adc_corr = ndimage.correlate1d(pixel_adc,np.ones(nbins),origin=-1*offset,axis=2,mode="constant")
+
     pix_x, pix_y = event.meta.pixel_pos[telid]
     geom = io.CameraGeometry.guess(pix_x, pix_y)
+    signal = np.zeros(pixel_adc.shape[:-1])
+    for gain in range(pixel_adc.shape[0]):
+        for pixel in range(pixel_adc.shape[1]):
+            neighbours = geom.neighbors[pixel]
+            peakbin = np.argmax(np.sum(pixel_adc[gain][neighbours],axis=0))
+            signal[gain][pixel] = pixel_adc_corr[gain][pixel][peakbin]
 
-    return
+    return signal
 
 def calibrate_amplitude_mc(integrated_charge, calib, telid, params):
-    TAG = sys._getframe().f_code.co_name+">"
-    """
-    Parameters
-    ----------
-    integrated_charge     Array of pixels with integrated change [ADC cts],
-                          pedestal substracted
-    calib                 Array of double containing the single-pe events
-    parameters['clip_amp']  Amplitude in p.e. above which the signal is
-                            clipped.
-    Returns
-    ------
-    Array of pixels with calibrate charge [photo-electrons]
-    Returns None if event is None
-
-    """
 
     if integrated_charge is None:
         return None
-    amplitude = np.zeros(integrated_charge.shape)
-    amplitude = integrated_charge * calib * CALIB_SCALE
+    print ("Shape Charge",integrated_charge.shape,calib.shape)
 
+    amplitude = np.zeros(integrated_charge.shape)
     if get_num_channel(telid) == 1:
-        print(integrated_charge,integrated_charge * calib)
+        amplitude = integrated_charge * calib * CALIB_SCALE
         return amplitude[0]
     else:
         amplitude_final = np.zeros(integrated_charge.shape)
+        valid_last = np.zeros(integrated_charge.shape)
+        print ("valid",integrated_charge.shape)
+        for i in range(amplitude.shape[0]):
 
-        for i in enumerate(integrated_charge.shape[0]):
-            np.greater(integrated_charge[i],-1000)
-            np.less(integrated_charge[i],10000)
-            valid = (np.greater(integrated_charge[i],-1000)==np.less(integrated_charge[i],10000))
-    #pe_pix_tel = []
-
-    #for ipix in range(0, get_num_pixels(telid)):
-    #    pe_pix = 0
-    #    int_pix_hg = integrated_charge[get_num_channel(telid)-1][ipix]
-    #    # If the integral charge is between -300,2000 ADC ts, we choose the HG
-    #    # Otherwise the LG channel
-    #    # If there is only one gain, it is the HG (default)
-    #    print(int_pix_hg.shape)
-    #    if (int_pix_hg > -1000 and int_pix_hg < 10000 or get_num_channel(telid) < 2):
-    #        pe_pix = (integrated_charge[get_num_channel(telid)-1][ipix] *
-    #        calib[get_num_channel(telid)-1][ipix])
-    #    else:
-    #        pe_pix = (integrated_charge[get_num_channel(telid)][ipix] *
-    #        calib[get_num_channel(telid)][ipix])
-
-    #    # pe_pix is in units of 'mean photo-electrons'
-    #    # (unit = mean p.e. signal.).
-    #    # We convert to experimentalist's 'peak photo-electrons'
-    #    # now (unit = most probable p.e. signal after experimental resolution).
-    #    # Keep in mind: peak(10 p.e.) != 10*peak(1 p.e.)
-    #    pe_pix_tel.append(pe_pix*CALIB_SCALE)
-    print(amplitude,amplitude.shape)
+            valid = np.logical_and(np.logical_and(np.greater(integrated_charge[i],-1000),
+                                    np.less(integrated_charge[i],10000)),not valid_last)
+            amplitude = integrated_charge * calib * CALIB_SCALE * valid
+            valid_last += valid
     return amplitude[0]
