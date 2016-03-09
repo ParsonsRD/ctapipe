@@ -40,7 +40,7 @@ def display_telescope(event, tel_id):
 
     disp.pixels.set_antialiaseds(False)
     disp.autoupdate = False
-    disp.pixels.set_cmap('afmhot')
+    disp.pixels.set_cmap('cool')
     chan = 0
     signals = event.dl1.tel[tel_id].pe_charge
     disp.image = signals
