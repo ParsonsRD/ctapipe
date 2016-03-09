@@ -219,7 +219,8 @@ def pixel_integration(event, ped, telid, integration_type = "global",geometry=No
     elif integration_type == "full":
         adc_sum = full_integration(pixel_adc)
 
-    return adc_sum
+    t_peak = calibrate_tpeak(pixel_adc,0,1)
+    return adc_sum,t_peak
 
 def calibrate_amplitude(integrated_charge,tpeak,calib, telid,linear_range=[-1000,10000]):
     """
@@ -288,7 +289,7 @@ def get_max_bin(integrated_charge):
     # Getting peak bin is easy, we can simply use the argmax function
     return np.argmax(integrated_charge,axis=2)
 
-def calibrate_tpeak(integrated_charge, offsets, ns_per_bin, peak_method="bin_centre"):
+def calibrate_tpeak(charge , offsets, ns_per_bin, peak_method="bin_centre"):
     """
     Get peak time from pedestal subtracted traces, and subtract any offset in the
     peak position for each pixel
@@ -310,12 +311,12 @@ def calibrate_tpeak(integrated_charge, offsets, ns_per_bin, peak_method="bin_cen
     [gain channel][pixel number]
     """
 
-    times = np.zeros(integrated_charge[:-1])
+    times = np.zeros(charge[:-1])
     if peak_method is "bin_centre":
-        times = get_max_bin(integrated_charge)
+        times = get_max_bin(charge)
     elif peak_method is "parabola_fit":
-        times = get_max_bin(integrated_charge)
+        times = get_max_bin(charge)
     elif peak_method is "cwt":
-        times = get_max_bin(integrated_charge)
+        times = get_max_bin(charge)
 
     return (times + offsets) * ns_per_bin
