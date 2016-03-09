@@ -4,28 +4,24 @@ and
 Convert the integral pixel ADC count to photo-electrons
 """
 
-import sys
 import numpy as np
 import scipy.ndimage as ndimage
 
 from pyhessio import *
-from ctapipe import io
-from astropy import units as u
-from time import time
-from numba import jit,njit
 import logging
 
 __all__ = [
     'pixel_integration',
     'calibrate_amplitude',
-    'calibrate_tpeak'
+    'calibrate_tpeak',
+    'pyhessio_trace_array'
 ]
 
 CALIB_SCALE = 0.92
 
-def pixels_to_array(telid,ped):
+def pyhessio_trace_array(telid,ped):
     """
-    Simple function to retrieve adc samples from a given event and copy them to a numpy array
+    Simple function to retrieve adc samples from a given event using pyhessio and copy them to a numpy array
     of dimensions [gain channel][pixel number][ADC bin]
     Pedestal subtracted binwise here, to make things easier later
     """
@@ -177,7 +173,7 @@ def neighbour_loop(pixel_adc,pixel_adc_corr,neighbors,add_central):
     return signal
 
 
-def pixel_integration(ped, telid, integration_type = "global",geometry=None,window = [7,2]):
+def pixel_integration(pixel_adc,ped, integration_type = "global",geometry=None,window = [7,2]):
 
     """Integrate the raw adc traces by using one of several algorithms (see functions for
     algorithm description) and find peak of trace
@@ -205,8 +201,6 @@ def pixel_integration(ped, telid, integration_type = "global",geometry=None,wind
     """
     logger = logging.getLogger("integration")
 
-    # Firstly copy everything to numpy array to make integrations easier/faster
-    pixel_adc = pixels_to_array(telid, ped )
     if integration_type == "local":
         adc_sum = local_peak_integration(pixel_adc,window)
     elif integration_type == "global":
@@ -272,7 +266,7 @@ def calibrate_amplitude(integrated_charge,tpeak,calib, telid,linear_range=[-1000
 
     return amplitude,peaks
 
-def get_max_bin(integrated_charge):
+def get_tmax_bin(integrated_charge):
     """
 
     Parameters
@@ -313,10 +307,10 @@ def calibrate_tpeak(charge , offsets, ns_per_bin, peak_method="bin_centre"):
 
     times = np.zeros(charge[:-1])
     if peak_method is "bin_centre":
-        times = get_max_bin(charge)
+        times = get_tmax_bin(charge)
     elif peak_method is "parabola_fit":
-        times = get_max_bin(charge)
+        times = get_tmax_bin(charge)
     elif peak_method is "cwt":
-        times = get_max_bin(charge)
+        times = get_tmax_bin(charge)
 
     return (times + offsets) * ns_per_bin
