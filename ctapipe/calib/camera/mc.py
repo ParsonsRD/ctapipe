@@ -177,10 +177,10 @@ def neighbour_loop(pixel_adc,pixel_adc_corr,neighbors,add_central):
     return signal
 
 
-def pixel_integration(event, ped, telid, integration_type = "global",geometry=None,window = [7,2]):
+def pixel_integration(ped, telid, integration_type = "global",geometry=None,window = [7,2]):
 
     """Integrate the raw adc traces by using one of several algorithms (see functions for
-    algorithm description)
+    algorithm description) and find peak of trace
 
     Parameters
     ----------
