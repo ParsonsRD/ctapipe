@@ -272,6 +272,20 @@ def calibrate_amplitude(integrated_charge,tpeak,calib, telid,linear_range=[-1000
     return amplitude,peaks
 
 def get_max_bin(integrated_charge):
+    """
+
+    Parameters
+    ----------
+    integrated_charge: ndarray
+        Array of ADC traces for all pixels with dimensions
+        [gain channel][pixel number]
+
+    Returns
+    -------
+    numpy ndarray of peak pixel times
+    """
+
+    # Getting peak bin is easy, we can simply use the argmax function
     return np.argmax(integrated_charge,axis=2)
 
 def calibrate_tpeak(integrated_charge, offsets, ns_per_bin, peak_method="bin_centre"):
