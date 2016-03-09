@@ -8,7 +8,7 @@ from ctapipe.core import Container
 from ctapipe.io.containers import RawData, CalibratedCameraData
 from ctapipe import visualization, io
 from astropy import units as u
-from ctapipe.calib.camera.signal_integration import *
+from ctapipe.calib.camera.gct import *
 from ctapipe.reco import cleaning,hillas
 from time import time
 
@@ -121,16 +121,17 @@ def camera_calibration(filename, parameters, disp_args, level):
 
             pix_adc = pyhessio_trace_array(telid,ped)
             int_adc_pix,t_pix = pixel_integration(pix_adc,ped,integration_type="neighbour",geometry=geom)
-            pe_pix = calibrate_amplitude(int_adc_pix,t_pix, np.array(calib),telid)
+            pe_pix,t_pix_g = calibrate_amplitude(int_adc_pix,t_pix, np.array(calib))
 
             int_adc_pix_local,t_pix = pixel_integration(pix_adc,ped,integration_type="local")
-            pe_pix_local = calibrate_amplitude(int_adc_pix_local,t_pix, np.array(calib),telid)
+            pe_pix_local,t_pix_g = calibrate_amplitude(int_adc_pix_local,t_pix, np.array(calib))
 
             int_adc_pix_global,t_pix = pixel_integration(pix_adc,ped,integration_type="global")
-            pe_pix_global = calibrate_amplitude(int_adc_pix_global,t_pix, np.array(calib),telid)
+            pe_pix_global,t_pix_g = calibrate_amplitude(int_adc_pix_global,t_pix, np.array(calib))
 
+            print("Running full")
             int_adc_pix_full,t_pix = pixel_integration(pix_adc,ped,integration_type="full")
-            pe_pix_full = calibrate_amplitude(int_adc_pix_full,t_pix, np.array(calib),telid)
+            pe_pix_full,t_pix_g = calibrate_amplitude(int_adc_pix_full,t_pix, np.array(calib))
 
             print ("Execution time",time()-start)
 
