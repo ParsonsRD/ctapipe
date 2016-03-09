@@ -118,16 +118,18 @@ def camera_calibration(filename, parameters, disp_args, level):
             # See pixel_integration_mc function documentation in mc.py
             # for the different algorithms options
             start = time()
-            int_adc_pix,t_pix = pixel_integration(ped, telid,integration_type="neighbour",geometry=geom)
+
+            pix_adc = pyhessio_trace_array(telid,ped)
+            int_adc_pix,t_pix = pixel_integration(pix_adc,ped,integration_type="neighbour",geometry=geom)
             pe_pix = calibrate_amplitude(int_adc_pix,t_pix, np.array(calib),telid)
 
-            int_adc_pix_local,t_pix = pixel_integration(ped, telid,integration_type="local")
+            int_adc_pix_local,t_pix = pixel_integration(pix_adc,ped,integration_type="local")
             pe_pix_local = calibrate_amplitude(int_adc_pix_local,t_pix, np.array(calib),telid)
 
-            int_adc_pix_global,t_pix = pixel_integration(ped, telid,integration_type="global")
+            int_adc_pix_global,t_pix = pixel_integration(pix_adc,ped,integration_type="global")
             pe_pix_global = calibrate_amplitude(int_adc_pix_global,t_pix, np.array(calib),telid)
 
-            int_adc_pix_full,t_pix = pixel_integration(ped, telid,integration_type="full")
+            int_adc_pix_full,t_pix = pixel_integration(pix_adc,ped,integration_type="full")
             pe_pix_full = calibrate_amplitude(int_adc_pix_full,t_pix, np.array(calib),telid)
 
             print ("Execution time",time()-start)
@@ -167,7 +169,7 @@ def camera_calibration(filename, parameters, disp_args, level):
             hp_global = hillas.hillas_parameters(pix_x, pix_y,pe_pix_global*clean_mask_global)
             hp_full = hillas.hillas_parameters(pix_x, pix_y,pe_pix_full*clean_mask_full)
             pe_pix*=clean_mask
-            container.dl1.tel[telid].pe_charge = pe_pix
+            #container.dl1.tel[telid].pe_charge = pe_pix
 
             print("Size, nb: ",hp.size,"local:",hp_local.size,"global:",hp_global.size,"full:",hp_full.size)
             #    container.dl1.tel[telid].pe_charge = np.array(pe_pix) *
