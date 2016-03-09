@@ -9,6 +9,7 @@ from ctapipe.io.containers import RawData, CalibratedCameraData
 from ctapipe import visualization, io
 from astropy import units as u
 from ctapipe.calib.camera.mc import *
+from ctapipe.reco import cleaning,hillas
 from time import time
 
 fig = plt.figure(figsize=(16, 7))
@@ -117,7 +118,18 @@ def camera_calibration(filename, parameters, disp_args, level):
             # See pixel_integration_mc function documentation in mc.py
             # for the different algorithms options
             start = time()
-            int_adc_pix = pixel_integration_mc(event,ped, telid,integration_type="neighbour")
+            int_adc_pix,t_pix = pixel_integration(ped, telid,integration_type="neighbour",geometry=geom)
+            pe_pix = calibrate_amplitude(int_adc_pix,t_pix, np.array(calib),telid)
+
+            int_adc_pix_local,t_pix = pixel_integration(ped, telid,integration_type="local")
+            pe_pix_local = calibrate_amplitude(int_adc_pix_local,t_pix, np.array(calib),telid)
+
+            int_adc_pix_global,t_pix = pixel_integration(ped, telid,integration_type="global")
+            pe_pix_global = calibrate_amplitude(int_adc_pix_global,t_pix, np.array(calib),telid)
+
+            int_adc_pix_full,t_pix = pixel_integration(ped, telid,integration_type="full")
+            pe_pix_full = calibrate_amplitude(int_adc_pix_full,t_pix, np.array(calib),telid)
+
             print ("Execution time",time()-start)
 
             #start = time()
@@ -126,7 +138,7 @@ def camera_calibration(filename, parameters, disp_args, level):
 
             # Convert integrated ADC counts into p.e.
             # selecting also the HG/LG channel (currently hard-coded)
-            pe_pix = calibrate_amplitude_mc(int_adc_pix, np.array(calib),telid)
+            #pe_pix = calibrate_amplitude(int_adc_pix, np.array(calib),telid)
             # Including per telescope metadata in the DL1 container
             if telid not in container.meta.pixel_pos:
                 container.meta.pixel_pos[telid] = event.meta.pixel_pos[telid]
@@ -143,10 +155,21 @@ def camera_calibration(filename, parameters, disp_args, level):
             # using the tailcuts_clean in reco/cleaning.py module
             #
             # if 'tail_cuts' in parameters:
-            #    clean_mask = tailcuts_clean(geom,
-            #    image=np.array(pe_pix),pedvars=1,
-            #    picture_thresh=parameters['tail_cuts'][0],
-            #    boundary_thresh=parameters['tail_cuts'][1])
+            clean_mask = cleaning.tailcuts_clean(geom,image=pe_pix,pedvars=1,picture_thresh=5,boundary_thresh=10)
+            clean_mask_global = cleaning.tailcuts_clean(geom,image=pe_pix_global,pedvars=1,picture_thresh=5,boundary_thresh=10)
+            clean_mask_local = cleaning.tailcuts_clean(geom,image=pe_pix_local,pedvars=1,picture_thresh=5,boundary_thresh=10)
+            clean_mask_full = cleaning.tailcuts_clean(geom,image=pe_pix_full,pedvars=1,picture_thresh=5,boundary_thresh=10)
+
+            pix_x, pix_y = event.meta.pixel_pos[telid] # first get camera geometry (this could be passed in a nicer way)
+
+            hp = hillas.hillas_parameters(pix_x, pix_y,pe_pix*clean_mask)
+            hp_local = hillas.hillas_parameters(pix_x, pix_y,pe_pix_local*clean_mask_local)
+            hp_global = hillas.hillas_parameters(pix_x, pix_y,pe_pix_global*clean_mask_global)
+            hp_full = hillas.hillas_parameters(pix_x, pix_y,pe_pix_full*clean_mask_full)
+            pe_pix*=clean_mask
+            container.dl1.tel[telid].pe_charge = pe_pix
+
+            print("Size, nb: ",hp.size,"local:",hp_local.size,"global:",hp_global.size,"full:",hp_full.size)
             #    container.dl1.tel[telid].pe_charge = np.array(pe_pix) *
             #    np.array(clean_mask)
             #    container.dl1.tel[telid].tom = np.array(peak_adc_pix[0]) *
