@@ -8,7 +8,7 @@ from ctapipe.core import Container
 from ctapipe.io.containers import RawData, CalibratedCameraData
 from ctapipe import visualization, io
 from astropy import units as u
-from ctapipe.calib.camera.mc import *
+from ctapipe.calib.camera.signal_integration import *
 from ctapipe.reco import cleaning,hillas
 from time import time
 
