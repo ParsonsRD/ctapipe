@@ -48,7 +48,30 @@ def full_integration(pixel_adc):
     [Gain Channel][pixel number]
 
     """
+    print(np.sum(pixel_adc,axis=2))
+
     return np.sum(pixel_adc,axis=2)
+
+def gaussian_filter_integration(pixel_adc):
+    """
+    Integrate all ADC samples, simply return the sum along the ADC channel axis
+
+    Parameters
+    ----------
+    pixel_adc: numpy array
+        pixel ADC traces with dimensions [gain channel][pixel number][ADC bin]
+
+    Returns
+    -------
+    numpy ndarray of integrated signals (in ADC counts) with the dimensions
+    [Gain Channel][pixel number]
+
+    """
+    pixel_adc_filter = ndimage.gaussian_filter1d(pixel_adc,1,axis=2)
+
+    print(pixel_adc_filter,pixel_adc)
+
+    return np.sum(pixel_adc_filter,axis=2)
 
 def local_peak_integration(pixel_adc, window):
     """
@@ -104,9 +127,9 @@ def global_peak_integration(pixel_adc, window):
     mask = np.zeros(pixel_adc.shape[2])
     mask[peak-offset:peak+(nbins-offset)] = 1 #create mask of readout window
 
-    pixel_adc *= mask #multiply ADC by mask to set all values outside window to 0
+    pixel_adc_mask = pixel_adc * mask #multiply ADC by mask to set all values outside window to 0
 
-    return np.sum(pixel_adc,axis=2) #return sum of traces
+    return np.sum(pixel_adc_mask,axis=2) #return sum of traces
 
 def neighbour_peak_integration(pixel_adc,geom,window, add_central=False):
     """
@@ -132,7 +155,8 @@ def neighbour_peak_integration(pixel_adc,geom,window, add_central=False):
     nbins,offset = window
 
     #correlate image first using ndimage
-0
+    pixel_adc_corr = ndimage.correlate1d(pixel_adc,np.ones(nbins),origin=-1*offset,axis=2,mode="constant")
+
     geometry =  geom.neighbors
     signal = neighbour_loop(pixel_adc,pixel_adc_corr,geometry,add_central)
 
@@ -210,7 +234,8 @@ def pixel_integration(pixel_adc,ped, integration_type = "global",geometry=None,w
         adc_sum = neighbour_peak_integration(pixel_adc,geometry,window)
     elif integration_type == "full":
         adc_sum = full_integration(pixel_adc)
-
+    elif integration_type == "gaussian_filter":
+        adc_sum = gaussian_filter_integration(pixel_adc)
     t_peak = calibrate_tpeak(pixel_adc,0,1)
     return adc_sum,t_peak
 
