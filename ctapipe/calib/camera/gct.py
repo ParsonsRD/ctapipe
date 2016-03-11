@@ -48,7 +48,6 @@ def full_integration(pixel_adc):
     [Gain Channel][pixel number]
 
     """
-    print(np.sum(pixel_adc,axis=2))
 
     return np.sum(pixel_adc,axis=2)
 
@@ -234,6 +233,7 @@ def pixel_integration(pixel_adc,ped, integration_type = "global",geometry=None,w
         adc_sum = full_integration(pixel_adc)
     elif integration_type == "gaussian_filter":
         adc_sum = gaussian_filter_integration(pixel_adc,window)
+
     t_peak = calibrate_tpeak(pixel_adc,0,1)
     return adc_sum,t_peak
 
