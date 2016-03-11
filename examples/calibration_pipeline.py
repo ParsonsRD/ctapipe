@@ -142,7 +142,7 @@ def camera_calibration(filename, parameters, disp_args, level):
             #plt.plot(t, pix_adc[0][0], 'r--',t,nd.gaussian_filter1d(pix_adc[0][0],1,axis=0),'b--',t,nd.median_filter(pix_adc[0][0],size=3),'g--',t, np.real(np.fft.ifft(dt_fft)),'y--')
            # plt.show()
 
-            int_adc_pix,t_pix = pixel_integration(pix_adc,ped,integration_type="gaussian_filter",geometry=geom)
+            int_adc_pix,t_pix = pixel_integration(pix_adc,ped,integration_type="neighbour",geometry=geom)
             pe_pix,t_pix_g = calibrate_amplitude(int_adc_pix,t_pix, np.array(calib))
 
             int_adc_pix_local,t_pix = pixel_integration(pix_adc,ped,integration_type="local")
@@ -188,7 +188,7 @@ def camera_calibration(filename, parameters, disp_args, level):
             hp = hillas.hillas_parameters(pix_x, pix_y,pe_pix*clean_mask)
             hillas_parameters_list.append(hp)
 
-            if(hp.size>50):
+            if(hp.size>20):
                 hillas_parameters_list1.append(hp)
 
             hp_local = hillas.hillas_parameters(pix_x, pix_y,pe_pix_local*clean_mask_local)
@@ -203,8 +203,11 @@ def camera_calibration(filename, parameters, disp_args, level):
             #    container.dl1.tel[telid].tom = np.array(peak_adc_pix[0]) *
             #    np.array(clean_mask)
             #
-        hillasintersection.intersect_nominal(hillas_parameters_list1)
+        start = time()
 
+        hillasintersection.intersect_nominal(hillas_parameters_list1)
+        print ("reco time",time()-start)
+        
         sys.stdout.flush()
         # Display
         if 'event' in disp_args:
@@ -214,7 +217,7 @@ def camera_calibration(filename, parameters, disp_args, level):
                 if 'telescope' in disp_args:
                     num=0
                     for telid in container.dl1.tels_with_data:
-                        if hillas_parameters_list[num].size>50:
+                        if hillas_parameters_list[num].size>20:
 
                             ello = input(
                                 "See telescope/evt. %d?[CT%d]<[n]/y/q/e> " %
@@ -233,8 +236,8 @@ def camera_calibration(filename, parameters, disp_args, level):
                     plt.pause(0.1)
             elif ello == 'q':
                 return None
-
         hillasintersection.intersect_nominal(hillas_parameters_list)
+
 if __name__ == '__main__':
     TAG = sys._getframe().f_code.co_name+">"
 
