@@ -52,7 +52,7 @@ def full_integration(pixel_adc):
 
     return np.sum(pixel_adc,axis=2)
 
-def gaussian_filter_integration(pixel_adc):
+def gaussian_filter_integration(pixel_adc,window):
     """
     Integrate all ADC samples, simply return the sum along the ADC channel axis
 
@@ -69,9 +69,7 @@ def gaussian_filter_integration(pixel_adc):
     """
     pixel_adc_filter = ndimage.gaussian_filter1d(pixel_adc,1,axis=2)
 
-    print(pixel_adc_filter,pixel_adc)
-
-    return np.sum(pixel_adc_filter,axis=2)
+    return global_peak_integration(pixel_adc_filter,window)
 
 def local_peak_integration(pixel_adc, window):
     """
@@ -235,7 +233,7 @@ def pixel_integration(pixel_adc,ped, integration_type = "global",geometry=None,w
     elif integration_type == "full":
         adc_sum = full_integration(pixel_adc)
     elif integration_type == "gaussian_filter":
-        adc_sum = gaussian_filter_integration(pixel_adc)
+        adc_sum = gaussian_filter_integration(pixel_adc,window)
     t_peak = calibrate_tpeak(pixel_adc,0,1)
     return adc_sum,t_peak
 
