@@ -9,12 +9,14 @@ from ctapipe.io.containers import RawData, CalibratedCameraData
 from ctapipe import visualization, io
 from astropy import units as u
 from ctapipe.calib.camera.gct import *
-from ctapipe.reco import cleaning,hillas
+from ctapipe.reco import cleaning,hillas,hillasintersection
 from time import time
+import scipy.ndimage as nd
+import scipy.signal as sig
 
 fig = plt.figure(figsize=(16, 7))
 
-def display_telescope(event, tel_id):
+def display_telescope(event, tel_id,hillas):
     global fig
     ntels = len(event.dl1.tels_with_data)
     fig.clear()
@@ -44,6 +46,7 @@ def display_telescope(event, tel_id):
     chan = 0
     signals = event.dl1.tel[tel_id].pe_charge
     disp.image = signals
+    disp.overlay_moments(hillas)
     disp.add_colorbar()
     disp.show()
 
@@ -88,7 +91,11 @@ def camera_calibration(filename, parameters, disp_args, level):
     # loop over all events, all telescopes and all channels and call
     # the calc_peds function defined above to do some work:
     nt = 0
+
     for event in hessio_event_source(filename):
+        hillas_parameters_list = list()
+        hillas_parameters_list1 = list()
+
         nt = nt+1
         # Fill DL1 container headers information. Clear also telescope info.
         container.dl1.run_id = event.dl0.run_id
@@ -119,8 +126,23 @@ def camera_calibration(filename, parameters, disp_args, level):
             # for the different algorithms options
             start = time()
 
+
             pix_adc = pyhessio_trace_array(telid,ped)
-            int_adc_pix,t_pix = pixel_integration(pix_adc,ped,integration_type="neighbour",geometry=geom)
+
+            t = np.arange(0., 25., 1)
+            np.fft.fftfreq(25,d=1)
+            dt_fft = np.fft.fft(pix_adc[0][0])
+            print(dt_fft.shape)
+            for i in range(25):
+                if dt_fft[i] > 0.001: # cut off all frequencies higher than 0.005
+                    dt_fft[i] = 0.0
+                    #dt_fft[25/2 + i] = 0.0
+            print(np.real(np.fft.ifft(dt_fft)), pix_adc[0][0])
+
+            #plt.plot(t, pix_adc[0][0], 'r--',t,nd.gaussian_filter1d(pix_adc[0][0],1,axis=0),'b--',t,nd.median_filter(pix_adc[0][0],size=3),'g--',t, np.real(np.fft.ifft(dt_fft)),'y--')
+           # plt.show()
+
+            int_adc_pix,t_pix = pixel_integration(pix_adc,ped,integration_type="gaussian_filter",geometry=geom)
             pe_pix,t_pix_g = calibrate_amplitude(int_adc_pix,t_pix, np.array(calib))
 
             int_adc_pix_local,t_pix = pixel_integration(pix_adc,ped,integration_type="local")
@@ -129,11 +151,9 @@ def camera_calibration(filename, parameters, disp_args, level):
             int_adc_pix_global,t_pix = pixel_integration(pix_adc,ped,integration_type="global")
             pe_pix_global,t_pix_g = calibrate_amplitude(int_adc_pix_global,t_pix, np.array(calib))
 
-            print("Running full")
             int_adc_pix_full,t_pix = pixel_integration(pix_adc,ped,integration_type="full")
             pe_pix_full,t_pix_g = calibrate_amplitude(int_adc_pix_full,t_pix, np.array(calib))
 
-            print ("Execution time",time()-start)
 
             #start = time()
             #int_adc_pix = pixel_integration_mc(event,ped, telid,integration_type="local")
@@ -158,7 +178,7 @@ def camera_calibration(filename, parameters, disp_args, level):
             # using the tailcuts_clean in reco/cleaning.py module
             #
             # if 'tail_cuts' in parameters:
-            clean_mask = cleaning.tailcuts_clean(geom,image=pe_pix,pedvars=1,picture_thresh=5,boundary_thresh=10)
+            clean_mask = cleaning.tailcuts_clean(geom,image=pe_pix,pedvars=1,picture_thresh=10,boundary_thresh=15)
             clean_mask_global = cleaning.tailcuts_clean(geom,image=pe_pix_global,pedvars=1,picture_thresh=5,boundary_thresh=10)
             clean_mask_local = cleaning.tailcuts_clean(geom,image=pe_pix_local,pedvars=1,picture_thresh=5,boundary_thresh=10)
             clean_mask_full = cleaning.tailcuts_clean(geom,image=pe_pix_full,pedvars=1,picture_thresh=5,boundary_thresh=10)
@@ -166,6 +186,11 @@ def camera_calibration(filename, parameters, disp_args, level):
             pix_x, pix_y = event.meta.pixel_pos[telid] # first get camera geometry (this could be passed in a nicer way)
 
             hp = hillas.hillas_parameters(pix_x, pix_y,pe_pix*clean_mask)
+            hillas_parameters_list.append(hp)
+
+            if(hp.size>50):
+                hillas_parameters_list1.append(hp)
+
             hp_local = hillas.hillas_parameters(pix_x, pix_y,pe_pix_local*clean_mask_local)
             hp_global = hillas.hillas_parameters(pix_x, pix_y,pe_pix_global*clean_mask_global)
             hp_full = hillas.hillas_parameters(pix_x, pix_y,pe_pix_full*clean_mask_full)
@@ -178,6 +203,7 @@ def camera_calibration(filename, parameters, disp_args, level):
             #    container.dl1.tel[telid].tom = np.array(peak_adc_pix[0]) *
             #    np.array(clean_mask)
             #
+        hillasintersection.intersect_nominal(hillas_parameters_list1)
 
         sys.stdout.flush()
         # Display
@@ -186,25 +212,29 @@ def camera_calibration(filename, parameters, disp_args, level):
             if ello == 'y':
 
                 if 'telescope' in disp_args:
+                    num=0
                     for telid in container.dl1.tels_with_data:
-                        ello = input(
-                            "See telescope/evt. %d?[CT%d]<[n]/y/q/e> " %
-                            (container.dl1.event_id, telid))
-                        if ello == 'y':
-                            display_telescope(container, telid)
-                            plt.pause(0.1)
-                        elif ello == 'q':
-                            break
-                        elif ello == 'e':
-                            return None
-                        else:
-                            continue
+                        if hillas_parameters_list[num].size>50:
+
+                            ello = input(
+                                "See telescope/evt. %d?[CT%d]<[n]/y/q/e> " %
+                                (container.dl1.event_id, telid))
+                            if ello == 'y':
+                                display_telescope(container, telid,hillas_parameters_list[num])
+                                plt.pause(0.1)
+                            elif ello == 'q':
+                                break
+                            elif ello == 'e':
+                                return None
+                            else:
+                                continue
+                        num+=1
                 else:
                     plt.pause(0.1)
             elif ello == 'q':
                 return None
 
-
+        hillasintersection.intersect_nominal(hillas_parameters_list)
 if __name__ == '__main__':
     TAG = sys._getframe().f_code.co_name+">"
 
