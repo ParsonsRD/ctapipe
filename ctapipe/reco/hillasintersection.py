@@ -14,14 +14,14 @@ TODO:
 """
 import numpy as np
 import itertools
-import math
 
 __all__ = [
-    'intersect_nominal'
+    'reconstruct_nominal',
+    'reconstruct_tilted'
 ]
 
 
-def intersect_nominal(hillas_parameters,weighting="Konrad"):
+def recontruct_nominal(hillas_parameters,weighting="Konrad"):
     if len(hillas_parameters)<2:
         return None
 
@@ -50,6 +50,10 @@ def intersect_nominal(hillas_parameters,weighting="Konrad"):
 
     print (sum_x/sum_w,sum_y/sum_w)
     return sum_x/sum_w,sum_y/sum_w
+
+def recontruct_tilted(hillas_parameters,weighting="Konrad"):
+
+    return 0,0
 
 def intersect_lines(xp1,yp1,phi1,xp2,yp2,phi2):
 
