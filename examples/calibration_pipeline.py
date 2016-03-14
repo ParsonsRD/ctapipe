@@ -208,7 +208,7 @@ def camera_calibration(filename, parameters, disp_args, level):
             #
         start = time()
 
-        hillasintersection.intersect_nominal(hillas_parameters_list1)
+        hillasintersection.reconstruct_nominal(hillas_parameters_list1)
         print ("reco time",time()-start)
 
         sys.stdout.flush()
@@ -235,7 +235,6 @@ def camera_calibration(filename, parameters, disp_args, level):
                     plt.pause(0.1)
             elif ello == 'q':
                 return None
-        hillasintersection.intersect_nominal(hillas_parameters_list)
 
 
 if __name__ == '__main__':
