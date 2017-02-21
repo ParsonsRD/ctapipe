@@ -11,7 +11,7 @@ from ctapipe.reco.shower_max import ShowerMaxEstimator
 import matplotlib.pyplot as plt
 from ctapipe.image import poisson_likelihood
 from ctapipe.io.containers import ReconstructedShowerContainer, ReconstructedEnergyContainer
-from ctapipe.coordinates import HorizonFrame, NominalFrame, TiltedGroundFrame, GroundFrame
+from ctapipe.coordinates import HorizonFrame, NominalFrame, TiltedGroundFrame, GroundFrame, project_to_ground
 from ctapipe.reco.reco_algorithms import RecoShowerGeomAlgorithm
 
 
@@ -36,8 +36,8 @@ class ImPACTFitter(RecoShowerGeomAlgorithm):
         # First we create a dictionary of image template interpolators for each telescope type
         self.root_dir = root_dir
         self.prediction = dict()
-        self.file_names = {"GATE":"SST_GCT.table.gz", "LSTCam":"LST.table.gz",
-                           "NectarCam":"MST_NectarCam.table.gz", "FlashCam":"MST_FlashCam.table.gz"}
+        self.file_names = {"GATE":"SST-GCT.table.gz", "LSTCam":"LST.table.gz",
+                           "NectarCam":"MST.table.gz", "FlashCam":"MST.table.gz"}
 
         # We also need a conversion function from height above ground to depth of maximum
         # To do this we need the conversion table from CORSIKA
@@ -45,11 +45,11 @@ class ImPACTFitter(RecoShowerGeomAlgorithm):
 
         # For likelihood calculation we need the with of the pedestal distribution for each pixel
         # currently this is not availible from the calibration, so for now lets hard code it in a dict
-        self.ped_table = {"LSTCam": 1.3, "NectarCam": 1.3, "FlashCam": 2.3,"GATE": 1.0}
+        self.ped_table = {"LSTCam": 1.3, "NectarCam": 1.3, "FlashCam": 2.3,"GATE": 0.5}
         self.spe = 0.5 # Also hard code single p.e. distribution width
 
         # Also we need to scale the ImPACT templates a bit, this will be fixed later
-        self.scale = {"LSTCam": 2., "NectarCam": 1., "FlashCam": 1.0, "GATE": 1.0}
+        self.scale = {"LSTCam": 1., "NectarCam": 1., "FlashCam": 1.0, "GATE": 1.0}
 
         # Next we need the position, area and amplitude from each pixel in the event
         # making this a class member makes passing them around much easier
@@ -249,8 +249,6 @@ class ImPACTFitter(RecoShowerGeomAlgorithm):
         nominal_seed = horizon_seed.transform_to(NominalFrame(array_direction=self.array_direction))
         source_x = nominal_seed.x.to(u.rad).value
         source_y = nominal_seed.y.to(u.rad).value
-        source_x =0
-        source_y =0
 
         ground = GroundFrame(x=shower_reco.core_x, y=shower_reco.core_y, z=0*u.m)
         tilted = ground.transform_to(TiltedGroundFrame(pointing_direction=self.array_direction))
@@ -260,15 +258,22 @@ class ImPACTFitter(RecoShowerGeomAlgorithm):
         zenith = 90*u.deg - self.array_direction[0]
         azimuth = self.array_direction[1]
 
-        x_max_exp = 343 + 84 * np.log10(energy_reco.energy.value)
-        #h_max = shower_reco.hmax * np.cos(zenith) + 2100*u.m
+        #x_max_exp = 343 + 84 * np.log10(energy_reco.energy.value)
+        x_max_exp = 300 + 93 * np.log10(energy_reco.energy.value)
+
+        x_max = shower_reco.h_max / np.cos(zenith)
         #x_max = self.shower_max.interpolate(h_max.to(u.km))
-        x_max = x_max_exp
+        #x_max = x_max_exp
         # Convert to binning of Xmax, addition of 100 can probably be removed
-        x_max_bin = x_max - x_max_exp
+        x_max_bin = x_max.value-x_max_exp
+        if x_max_bin > 150:
+            x_max_bin = 150
+        if x_max_bin < -150:
+            x_max_bin = -150
 
         impact = np.sqrt(pow(self.tel_pos_x[tel_id] - tilt_x, 2) + pow(self.tel_pos_y[tel_id] -
                                                                                    tilt_y, 2))
+
         phi = np.arctan2((self.tel_pos_y[tel_id] - tilt_y), (self.tel_pos_x[tel_id] - tilt_x))
 
         pix_x_rot, pix_y_rot = self.rotate_translate(self.pixel_x[tel_id]*-1, self.pixel_y[tel_id],
@@ -326,14 +331,18 @@ class ImPACTFitter(RecoShowerGeomAlgorithm):
                                         zenith.to(u.rad).value) * x_max_scale
 
             # Calculate expected Xmax given this energy
-            x_max_exp = 343 + 84 * np.log10(energy)
+            #x_max_exp = 343 + 84 * np.log10(energy)
+            x_max_exp = 300 + 93 * np.log10(energy)
+
             # Convert to binning of Xmax, addition of 100 can probably be removed
             x_max_bin = x_max.value - x_max_exp
+            #x_max_bin = 100
+
             # Check for range
-            if x_max_bin > 100:
-                x_max_bin = 100
-            if x_max_bin < -100:
-                x_max_bin = -100
+            if x_max_bin > 150:
+                x_max_bin = 150
+            if x_max_bin < -150:
+                x_max_bin = -150
         else:
             x_max_bin = x_max_scale * 37.8
             if x_max_bin< 13:
@@ -477,22 +486,24 @@ class ImPACTFitter(RecoShowerGeomAlgorithm):
         # Create Minuit object with first guesses at parameters, strip away the units as Minuit doesnt like them
         min = Minuit(self.get_likelihood, print_level=1,
                      source_x=source_x, error_source_x=0.01/57.3, fix_source_x=False,
-                     limit_source_x= (source_x - 0.2/57.3, source_x + 0.2 / 57.3),
+                     limit_source_x= (source_x - 0.5/57.3, source_x + 0.5 / 57.3),
                      source_y=source_y, error_source_y=0.01/57.3, fix_source_y=False,
-                     limit_source_y=(source_y - 0.2 / 57.3, source_y+ 0.2 / 57.3),
+                     limit_source_y=(source_y - 0.5 / 57.3, source_y+ 0.5 / 57.3),
                      core_x=tilt_x, error_core_x=10, limit_core_x=(tilt_x-200, tilt_x+200),
                      core_y=tilt_y, error_core_y=10, limit_core_y=(tilt_y-200,tilt_y+200),
                      energy=energy_seed.energy.value, error_energy=energy_seed.energy.value*0.05,
                      limit_energy=(lower_en_limit.value,energy_seed.energy.value*10.),
                      x_max_scale=1, error_x_max_scale=0.1, limit_x_max_scale=(0.5,2), fix_x_max_scale=False, errordef=1)
 
-        #min.tol *= 1000
-        min.strategy = 1
+        min.tol *= 1000
+        min.strategy = 0
 
         # Perform minimisation
         migrad = min.migrad()
         fit_params = min.values
         errors = min.errors
+    #    print(migrad)
+    #    print(min.minos())
 
         # container class for reconstructed showers '''
         shower_result = ReconstructedShowerContainer()
@@ -501,12 +512,13 @@ class ImPACTFitter(RecoShowerGeomAlgorithm):
                                array_direction=self.array_direction)
         horizon = nominal.transform_to(HorizonFrame())
 
-        #self.draw_surfaces(nominal.x.to(u.rad), nominal.y.to(u.rad), fit_params["core_x"]*u.m, fit_params["core_y"]*u.m,
-        #                   fit_params["energy"]*u.TeV, fit_params["x_max_scale"])
-
         shower_result.alt, shower_result.az = horizon.alt, horizon.az
-        shower_result.core_x = fit_params["core_x"] * u.m
-        shower_result.core_y = fit_params["core_y"] * u.m
+        tilted = TiltedGroundFrame(x=fit_params["core_x"] * u.m, y=fit_params["core_y"] * u.m,
+                                   pointing_direction=self.array_direction)
+        ground = project_to_ground(tilted)
+
+        shower_result.core_x = ground.x
+        shower_result.core_y = ground.y
 
         shower_result.is_valid = True
 
@@ -647,7 +659,6 @@ class ImPACTFitter(RecoShowerGeomAlgorithm):
                 j += 1
 
             i += 1
-        print(w)
 
         X, Y = np.meshgrid(x_ground_list, y_ground_list)
         return X, Y, w
