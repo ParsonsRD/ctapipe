@@ -495,9 +495,6 @@ class ImPACTFitter(RecoShowerGeomAlgorithm):
                      limit_energy=(lower_en_limit.value,energy_seed.energy.value*10.),
                      x_max_scale=1, error_x_max_scale=0.1, limit_x_max_scale=(0.5,2), fix_x_max_scale=False, errordef=1)
 
-        #min.tol *= 1000
-        #min.strategy = 0
-
         # Perform minimisation
         migrad = min.migrad()
         fit_params = min.values
