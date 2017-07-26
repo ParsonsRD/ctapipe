@@ -13,7 +13,8 @@ from ctapipe.coordinates import (HorizonFrame,
                                  TiltedGroundFrame,
                                  GroundFrame,
                                  project_to_ground)
-from ctapipe.image import poisson_likelihood_gaussian, mean_poisson_likelihood_gaussian
+from ctapipe.image import poisson_likelihood_gaussian, poisson_likelihood,\
+    mean_poisson_likelihood_gaussian, mean_poisson_likelihood_full
 from ctapipe.io.containers import (ReconstructedShowerContainer,
                                    ReconstructedEnergyContainer)
 from ctapipe.reco.reco_algorithms import Reconstructor
@@ -51,10 +52,10 @@ def energy_prior(energy, index=-1):
     return -2 * np.log(np.power(energy, index))
 
 
-def xmax_prior(energy, xmax, width=30):
+def xmax_prior(energy, xmax, width=30*(u.g*u.cm**-2)):
 
     x_max_exp = guess_shower_depth(energy)
-    diff = xmax.value - x_max_exp
+    diff = xmax - x_max_exp
 
     return -2 * np.log(norm.pdf(diff/width))
 
@@ -101,21 +102,25 @@ class ImPACTReconstructor(Reconstructor):
         self.root_dir = root_dir
         self.prediction = dict()
 
-        self.file_names = {"GATE":"GCT_xm_full.fits", "LSTCam":"LST_xm_full.fits",
-                           "NectarCam":"MST_xm_full.fits", "FlashCam":"MST_xm_full.fits"}
+        self.file_names = {"GATE":"GCT_xm_full.fits","CHEC":"GCT_xm_full.fits",
+                           "LSTCam":"LST_xm_full.fits","NectarCam":"MST_xm_full.fits",
+                           "FlashCam":"MST_xm_full.fits"}
 
         # We also need a conversion function from height above ground to depth of maximum
         # To do this we need the conversion table from CORSIKA
         self.thickness_profile, self.altitude_profile = \
             get_atmosphere_profile_functions('paranal')
 
-        # For likelihood calculation we need the with of the pedestal distribution for each pixel
-        # currently this is not availible from the calibration, so for now lets hard code it in a dict
-        self.ped_table = {"LSTCam": 1.3, "NectarCam": 2.0, "FlashCam": 2.3,"GATE": 1.3}
+        # For likelihood calculation we need the with of the pedestal distribution for
+        # each pixel currently this is not availible from the calibration, so for now
+        # lets hard code it in a dict
+        self.ped_table = {"LSTCam": 3.3, "NectarCam": 2.0, "FlashCam": 2.3,"GATE": 1.3,
+                          "CHEC": 1.3}
         self.spe = 0.5 # Also hard code single p.e. distribution width
 
         # Also we need to scale the impact_reco templates a bit, this will be fixed later
-        self.scale = {"LSTCam": 1.3, "NectarCam": 1.1, "FlashCam": 1.4, "GATE": 1.0}
+        self.scale = {"LSTCam": 1.3, "NectarCam": 1.1, "FlashCam": 1.4, "GATE": 1.0,
+                      "CHEC": 1.0}
 
         self.last_image = dict()
         self.last_point = dict()
@@ -492,8 +497,10 @@ class ImPACTReconstructor(Reconstructor):
                                                self.spe,
                                                self.ped[tel_count])
             if goodness_of_fit:
-                like -= mean_poisson_likelihood_gaussian(prediction, self.spe,
-                                                         self.ped[tel_count])
+                print(like, mean_poisson_likelihood_gaussian(prediction, self.spe,
+                                                         self.ped[tel_count]), prediction)
+                like -= mean_poisson_likelihood_gaussian(prediction, spe_width=self.spe,
+                                                         ped=self.ped[tel_count])
 
             if np.any(prediction == np.inf):
                 print("inf found at ", self.type[tel_count], zenith,
@@ -510,11 +517,16 @@ class ImPACTReconstructor(Reconstructor):
         if "energy" in self.priors:
             prior_pen += energy_prior(energy, index=-2)
         if "xmax" in self.priors:
-            prior_pen += xmax_prior(energy, x_max)
+            prior_pen += xmax_prior(energy*u.TeV, x_max)
 
         array_like += prior_pen/float(len(array_like))
+
         if self.array_return:
             return array_like
+
+        if goodness_of_fit:
+            return np.sum(array_like)/np.sqrt(2*float(len(array_like)))
+
         return np.sum(array_like)
 
 
@@ -681,6 +693,12 @@ class ImPACTReconstructor(Reconstructor):
                                                   zenith.to(u.rad).value)
 
         shower_result.h_max_uncert = errors[5] * shower_result.h_max
+        print(self.get_likelihood(fit_params[0],fit_params[1],fit_params[2],fit_params[3],
+                                  fit_params[4],fit_params[5],goodness_of_fit=True),
+              self.get_likelihood(fit_params[0], fit_params[1], fit_params[2],
+                                  fit_params[3],
+                                  fit_params[4], fit_params[5], goodness_of_fit=False)
+              )
 
         shower_result.goodness_of_fit = self.get_likelihood(fit_params[0],
                                                             fit_params[1],
@@ -736,6 +754,8 @@ class ImPACTReconstructor(Reconstructor):
                          x_max_scale=params[5], error_x_max_scale=step[5],
                          limit_x_max_scale=limits[5],
                          fix_x_max_scale=False,
+                         goodness_of_fit=0, fix_goodness_of_fit=True,
+                         fix_core_x=True, fix_core_y=True,
                          errordef=1)
 
             min.tol *= 1000

@@ -291,8 +291,8 @@ def mean_poisson_likelihood_full(prediction, spe_width, ped):
     width = np.sqrt(width)
 
     for p in range(len(prediction)):
-        int_range = (prediction[p] - 10 * width[p],
-                     prediction[p] + 10 * width[p])
+        int_range = (prediction[p] - 5 * width[p],
+                     prediction[p] + 5 * width[p])
         mean_like[p] = quad(_integral_poisson_likelihood_full, int_range[0], int_range[1],
                             args=(prediction[p], spe_width[p], ped[p]), epsrel=0.05)[0]
     return mean_like
