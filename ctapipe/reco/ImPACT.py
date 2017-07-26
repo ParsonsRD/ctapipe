@@ -13,7 +13,7 @@ from ctapipe.coordinates import (HorizonFrame,
                                  TiltedGroundFrame,
                                  GroundFrame,
                                  project_to_ground)
-from ctapipe.image import poisson_likelihood_gaussian
+from ctapipe.image import poisson_likelihood_gaussian, mean_poisson_likelihood_gaussian
 from ctapipe.io.containers import (ReconstructedShowerContainer,
                                    ReconstructedEnergyContainer)
 from ctapipe.reco.reco_algorithms import Reconstructor
@@ -82,8 +82,20 @@ class ImPACTReconstructor(Reconstructor):
 
     """
 
-    def __init__(self, root_dir=".", minimiser="minuit", prior=""):
-
+    def __init__(self, root_dir=".", minimiser="minuit", prior="", gaussian_approx=True):
+        """
+        
+        Parameters
+        ----------
+        root_dir: str
+            Base directory of ImPACT templates
+        minimiser: str
+            Choice of function minimiser
+        prior: str
+            Choice of priors to use in fit
+        gaussian_approx: bool
+            Use gaussian approximation of likelihood
+        """
         # First we create a dictionary of image template interpolators
         # for each telescope type
         self.root_dir = root_dir
@@ -132,6 +144,7 @@ class ImPACTReconstructor(Reconstructor):
 
         self.array_return = False
         self.priors = prior
+        self.gaussian_approx = gaussian_approx
 
     def initialise_templates(self, tel_type):
         """Check if templates for a given telescope type has been initialised
@@ -382,7 +395,6 @@ class ImPACTReconstructor(Reconstructor):
                                            pix_y_rot * (180 / math.pi))
 
         prediction *= self.scale[self.type[tel_id]]
-        #prediction *= self.pixel_area[tel_id]
 
         prediction[prediction < 0] = 0
         prediction[np.isnan(prediction)] = 0
@@ -390,7 +402,7 @@ class ImPACTReconstructor(Reconstructor):
         return prediction
 
     def get_likelihood(self, source_x, source_y, core_x, core_y,
-                       energy, x_max_scale):
+                       energy, x_max_scale, goodness_of_fit=False):
         """Get the likelihood that the image predicted at the given test
         position matches the camera image.
 
@@ -408,7 +420,8 @@ class ImPACTReconstructor(Reconstructor):
             Shower energy (in TeV)
         x_max_scale: float
             Scaling factor applied to geometrically calculated Xmax
-
+        goodness_of_fit: bool
+            Subtract expected likelihood to give goodness of fit
         Returns
         -------
         float: Likelihood the model represents the camera image at this position
@@ -478,6 +491,10 @@ class ImPACTReconstructor(Reconstructor):
                                                prediction,
                                                self.spe,
                                                self.ped[tel_count])
+            if goodness_of_fit:
+                like -= mean_poisson_likelihood_gaussian(prediction, self.spe,
+                                                         self.ped[tel_count])
+
             if np.any(prediction == np.inf):
                 print("inf found at ", self.type[tel_count], zenith,
                       azimuth, energy, impact, x_max_bin)
@@ -665,7 +682,13 @@ class ImPACTReconstructor(Reconstructor):
 
         shower_result.h_max_uncert = errors[5] * shower_result.h_max
 
-        shower_result.goodness_of_fit = np.nan
+        shower_result.goodness_of_fit = self.get_likelihood(fit_params[0],
+                                                            fit_params[1],
+                                                            fit_params[2],
+                                                            fit_params[3],
+                                                            fit_params[4],
+                                                            fit_params[5],
+                                                            goodness_of_fit=True)
         shower_result.tel_ids = list(self.image.keys())
 
         energy_result = ReconstructedEnergyContainer()
