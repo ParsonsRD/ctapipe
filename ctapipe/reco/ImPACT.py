@@ -114,8 +114,8 @@ class ImPACTReconstructor(Reconstructor):
         # For likelihood calculation we need the with of the pedestal distribution for
         # each pixel currently this is not availible from the calibration, so for now
         # lets hard code it in a dict
-        self.ped_table = {"LSTCam": 3.3, "NectarCam": 2.0, "FlashCam": 2.3,"GATE": 1.3,
-                          "CHEC": 1.3}
+        self.ped_table = {"LSTCam": 2.8, "NectarCam": 2.3, "FlashCam": 2.3,"GATE": 0.5,
+                          "CHEC": 0.8}
         self.spe = 0.5 # Also hard code single p.e. distribution width
 
         # Also we need to scale the impact_reco templates a bit, this will be fixed later
@@ -390,7 +390,7 @@ class ImPACTReconstructor(Reconstructor):
                                                      self.pixel_y[tel_id],
                                                      source_x,
                                                      source_y, phi)
-
+        #pix_x_rot -= 0.1 / (180 / math.pi)
         prediction = self.image_prediction(self.type[tel_id],
                                            (90 * u.deg) - shower_reco.alt,
                                            shower_reco.az,
@@ -497,9 +497,12 @@ class ImPACTReconstructor(Reconstructor):
                                                self.spe,
                                                self.ped[tel_count])
             if goodness_of_fit:
-                print(like, mean_poisson_likelihood_gaussian(prediction, self.spe,
-                                                         self.ped[tel_count]), prediction)
-                like -= mean_poisson_likelihood_gaussian(prediction, spe_width=self.spe,
+                like = poisson_likelihood(self.image[tel_count],
+                                                   prediction,
+                                                   self.spe,
+                                                   self.ped[tel_count])
+
+                like -= mean_poisson_likelihood_full(prediction, spe_width=self.spe,
                                                          ped=self.ped[tel_count])
 
             if np.any(prediction == np.inf):
@@ -693,12 +696,6 @@ class ImPACTReconstructor(Reconstructor):
                                                   zenith.to(u.rad).value)
 
         shower_result.h_max_uncert = errors[5] * shower_result.h_max
-        print(self.get_likelihood(fit_params[0],fit_params[1],fit_params[2],fit_params[3],
-                                  fit_params[4],fit_params[5],goodness_of_fit=True),
-              self.get_likelihood(fit_params[0], fit_params[1], fit_params[2],
-                                  fit_params[3],
-                                  fit_params[4], fit_params[5], goodness_of_fit=False)
-              )
 
         shower_result.goodness_of_fit = self.get_likelihood(fit_params[0],
                                                             fit_params[1],
@@ -755,7 +752,7 @@ class ImPACTReconstructor(Reconstructor):
                          limit_x_max_scale=limits[5],
                          fix_x_max_scale=False,
                          goodness_of_fit=0, fix_goodness_of_fit=True,
-                         fix_core_x=True, fix_core_y=True,
+                         fix_core_x=False, fix_core_y=False,
                          errordef=1)
 
             min.tol *= 1000

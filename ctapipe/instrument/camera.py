@@ -141,7 +141,7 @@ class CameraGeometry:
 
         tel_type, cam_id, pix_type, pix_rotation, cam_rotation = \
             _guess_camera_type(len(pix_x), optical_foclen)
-
+        print("rot", cam_rotation, tel_type, cam_id)
         area = cls._calc_pixel_area(pix_x, pix_y, pix_type)
 
         instance = cls(
@@ -156,6 +156,7 @@ class CameraGeometry:
             cam_rotation=Angle(cam_rotation),
             apply_derotation=apply_derotation
         )
+        instance.cam_rotation = Angle(cam_rotation)
 
         CameraGeometry._geometry_cache[identifier] = instance
         return instance
