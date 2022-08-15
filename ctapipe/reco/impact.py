@@ -34,7 +34,7 @@ from ctapipe.containers import (
 
 from ctapipe.utils.template_network_interpolator import (
     TemplateNetworkInterpolator,
-    TimeGradientInterpolator,
+    SingleValueInterpolator,
     DummyTemplateInterpolator,
     DummyTimeInterpolator,
 )
@@ -59,6 +59,7 @@ PROV = Provenance()
 
 INVALID = ReconstructedGeometryContainer(
     telescopes=[],
+    goodness_of_fit=np.zeros(13),
     prefix="ImPACTReconstructor",
 )
 
@@ -91,13 +92,6 @@ class ImPACTReconstructor(Reconstructor):
     .. [parsons14] Parsons & Hinton, Astroparticle Physics 56 (2014), pp. 26-34
 
     """
-
-    minimiser = traits.CaselessStrEnum(
-        ["minuit", "l-BFGS"],
-        default_value="minuit",
-        help="name minimiser to use in the fit",
-    ).tag(config=True)
-
     atmosphere_profile_name = traits.CaselessStrEnum(
         ["paranal", "lapalma"],
         default_value="paranal",
@@ -106,6 +100,15 @@ class ImPACTReconstructor(Reconstructor):
 
     use_time_gradient = traits.Bool(
         default_value=False, help="Use time gradient in ImPACT reconstrcution"
+    ).tag(config=True)
+
+    use_untriggered_fraction = traits.Bool(
+        default_value=False, help="Use untriggered telescope fraction in \
+        ImPACT reconstruction"
+    ).tag(config=True)
+
+    extra_uncertainty = traits.Float(
+        default_value=0.0, help="Additional uncertainty to set in likelihood"
     ).tag(config=True)
 
     root_dir = traits.Unicode(
@@ -130,18 +133,17 @@ class ImPACTReconstructor(Reconstructor):
     def __init__(self, subarray, dummy_reconstructor=False, **kwargs):
         super().__init__(subarray, **kwargs)
 
-        """
-        Create a new instance of ImPACTReconstructor
-        """
-
         self.subarray = subarray
+        guess_array = self.subarray.tel_ids_to_mask([0])
+        guess_array = np.zeros(guess_array.shape)
+        INVALID.goodness_of_fit = guess_array
+        
         # First we create a dictionary of image template interpolators
         # for each telescope type
-        # self.priors = prior
-
         # String templates for loading ImPACT templates
         self.amplitude_template = Template("${base}/${camera}.template.gz")
         self.time_template = Template("${base}/${camera}_time.template.gz")
+        self.fraction_template = Template("${base}/${camera}_fraction.template.gz")
 
         # We also need a conversion function from height above ground to
         # depth of maximum To do this we need the conversion table from CORSIKA
@@ -169,6 +171,7 @@ class ImPACTReconstructor(Reconstructor):
 
         self.prediction = dict()
         self.time_prediction = dict()
+        self.fraction_prediction = dict()
 
         self.array_direction = None
         self.nominal_frame = None
@@ -185,7 +188,6 @@ class ImPACTReconstructor(Reconstructor):
         event : container
             `ctapipe.containers.ArrayEventContainer`
         """
-
         try:
             hillas_dict = self._create_hillas_dict(event)
         except (TooFewTelescopesException, InvalidWidthException):
@@ -277,11 +279,25 @@ class ImPACTReconstructor(Reconstructor):
                     filename = self.time_template.substitute(
                         base=self.root_dir, camera=tel_type[t]
                     )
-                    self.time_prediction[tel_type[t]] = TimeGradientInterpolator(
+                    self.time_prediction[tel_type[t]] = SingleValueInterpolator(
                         filename
                     )
                     PROV.add_input_file(
                         filename, role="ImPACT Time Template file for " + tel_type[t]
+                    )
+
+            if self.use_untriggered_fraction:
+                if self.dummy_reconstructor:
+                    self.fraction_prediction[tel_type[t]] = DummyTimeInterpolator()
+                else:
+                    filename = self.fraction_template.substitute(
+                        base=self.root_dir, camera=tel_type[t]
+                    )
+                    self.fraction_prediction[tel_type[t]] = SingleValueInterpolator(
+                        filename
+                    )
+                    PROV.add_input_file(
+                        filename, role="ImPACT Untriggered Fraction Template file for " + tel_type[t]
                     )
 
         return True
@@ -521,7 +537,7 @@ class ImPACTReconstructor(Reconstructor):
             )
 
             if self.use_time_gradient:
-                tg, tgu = self.predict_time(
+                time_gradient, time_gradient_u = self.predict_time(
                     tel_type,
                     np.rad2deg(zenith),
                     azimuth,
@@ -529,8 +545,8 @@ class ImPACTReconstructor(Reconstructor):
                     impact[type_mask],
                     x_max_bin * np.ones_like(impact[type_mask]),
                 )
-                time_gradients[type_mask] = tg
-                time_gradients_uncertainty[type_mask] = tgu
+                time_gradients[type_mask] = time_gradient
+                time_gradients_uncertainty[type_mask] = time_gradient_u
 
         if self.use_time_gradient:
             time_gradients_uncertainty[time_gradients_uncertainty == 0] = 1e-6
@@ -548,24 +564,19 @@ class ImPACTReconstructor(Reconstructor):
                         y=self.time[telescope_index][time_mask],
                         samples=3,
                     )[0][0]
-
-                    time_like = -2 * norm.logpdf(
-                        time_slope,
-                        loc=time_gradients[telescope_index],
-                        scale=time_gradients_uncertainty[telescope_index],
-                    )
-
+                    time_like =-2 * norm.logpdf(
+                        (time_slope-time_gradients[telescope_index])/time_gradients_uncertainty[telescope_index])
                     chi2 += time_like
 
         # Likelihood function will break if we find a NaN or a 0
         prediction[np.isnan(prediction)] = 1e-8
         prediction[prediction < 1e-8] = 1e-8
-        # prediction *= self.scale_factor[:, np.newaxis]
 
         # Get likelihood that the prediction matched the camera image
         mask = ma.getmask(self.image)
 
-        like = neg_log_likelihood_approx(self.image, prediction, self.spe, self.ped)
+        like = neg_log_likelihood_approx(self.image, prediction, self.spe, self.ped, \
+                    extra_uncertainty=self.extra_uncertainty)
         like[mask] = 0
 
         if goodness_of_fit:
@@ -648,7 +659,6 @@ class ImPACTReconstructor(Reconstructor):
 
         self.tel_pos_x = np.zeros(len(hillas_dict))
         self.tel_pos_y = np.zeros(len(hillas_dict))
-        # self.scale_factor = np.zeros(len(hillas_dict))
 
         self.ped = np.zeros(len(hillas_dict))
         self.tel_types, self.tel_id = list(), list()
@@ -711,7 +721,6 @@ class ImPACTReconstructor(Reconstructor):
             self.tel_pos_y[i] = tilt_coord[indices[i]].y.to(u.m).value
 
             self.hillas_parameters.append(hillas_dict[tel_id])
-            # self.scale_factor[i] = 1#self.template_scale[tel_id]
 
         # Most interesting stuff is now copied to the class, but to remove our requirement
         # for loops we must copy the pixel positions to an array with the length of the
@@ -916,7 +925,11 @@ class ImPACTReconstructor(Reconstructor):
             True,
         )
 
-        shower_result.goodness_of_fit = np.sum(goodness_of_fit)
+        tel_mask = self.subarray.tel_ids_to_mask(self.tel_id)
+        goodness_output = np.zeros(tel_mask.shape)
+        goodness_output[tel_mask] =  ma.getdata(goodness_of_fit)
+        print(goodness_output)
+        shower_result.goodness_of_fit = goodness_output
         shower_result.telescopes = self.tel_id
         shower_result.is_valid = True
 

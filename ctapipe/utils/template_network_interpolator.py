@@ -320,7 +320,7 @@ class TemplateNetworkInterpolator(BaseTemplate):
         return interpolated_value
 
 
-class TimeGradientInterpolator(BaseTemplate):
+class SingleValueInterpolator(BaseTemplate):
     """
     Class for interpolating between the time gradient predictions
     """
@@ -368,15 +368,13 @@ class TimeGradientInterpolator(BaseTemplate):
         ndarray: Time Gradient expectation and RMS values
         """
         array = np.stack((energy, impact, xmax), axis=-1)
-
+        interpolated_value = None
         if self.no_zenaz:
             interpolated_value = self.interpolator(array, None)
         else:
             interpolated_value = self.perform_interpolation(
                 zenith, azimuth, array, None
             )
-
-        interpolated_value = interpolated_value
 
         return interpolated_value
 

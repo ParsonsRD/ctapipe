@@ -77,11 +77,6 @@ class ShowerProcessor(Component):
         """
         k = self.reconstructor_type            
         event.dl2.stereo.geometry[k] = self.reconstructor(event)
-        
-        if self.advanced_reconstructor_type != "":
-            geometry, energy = self.advanced_reconstructor(event)
-            event.dl2.stereo.geometry[self.advanced_reconstructor_type] = geometry
-            event.dl2.stereo.energy[self.advanced_reconstructor_type] = energy
 
         # compute and store the impact parameter for each reconstruction (for
         # now there is only one, but in the future this should be a loop over
@@ -98,3 +93,20 @@ class ShowerProcessor(Component):
                 distance=impact_distances[tel_index],
                 prefix=f"{self.reconstructor_type}_tel",
             )
+            
+        if self.advanced_reconstructor_type != "":
+            geometry, energy = self.advanced_reconstructor(event)
+            event.dl2.stereo.geometry[self.advanced_reconstructor_type] = geometry
+            event.dl2.stereo.energy[self.advanced_reconstructor_type] = energy
+
+            impact_distances = shower_impact_distance(
+                shower_geom=event.dl2.stereo.geometry[self.advanced_reconstructor_type], subarray=self.subarray
+            )
+
+            for tel_id in event.trigger.tels_with_trigger:
+                tel_index = self.subarray.tel_indices[tel_id]
+                event.dl2.tel[tel_id].impact[self.advanced_reconstructor_type] = TelescopeImpactParameterContainer(
+                    distance=impact_distances[tel_index],
+                    prefix=f"{self.reconstructor_type}_tel",
+                )
+

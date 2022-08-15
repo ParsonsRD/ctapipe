@@ -46,7 +46,8 @@ class PixelLikelihoodError(RuntimeError):
     pass
 
 
-def neg_log_likelihood_approx(image, prediction, spe_width, pedestal):
+def neg_log_likelihood_approx(image, prediction, spe_width, pedestal,\
+        extra_uncertainty=0.):
     """Calculate negative log likelihood for telescope.
 
     Gaussian approximation from [denaurois2009]_, p. 22 (equation between (24) and (25)).
@@ -91,7 +92,7 @@ def neg_log_likelihood_approx(image, prediction, spe_width, pedestal):
     -------
     float
     """
-    theta = 2 * (pedestal ** 2 + prediction * (1 + spe_width ** 2))
+    theta = 2 * (pedestal ** 2 + prediction * (1 + spe_width ** 2) + (prediction * extra_uncertainty)**2)
     neg_log_l = np.log(np.pi * theta)/2. + (image - prediction) ** 2 / theta
 
     return 2 * neg_log_l
