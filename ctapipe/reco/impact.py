@@ -137,7 +137,9 @@ class ImPACTReconstructor(Reconstructor):
         guess_array = self.subarray.tel_ids_to_mask([0])
         guess_array = np.zeros(guess_array.shape)
         INVALID.goodness_of_fit = guess_array
-        
+        INVALID.impact_distance = guess_array
+        INVALID.image_amplitude = guess_array
+
         # First we create a dictionary of image template interpolators
         # for each telescope type
         # String templates for loading ImPACT templates
@@ -928,8 +930,23 @@ class ImPACTReconstructor(Reconstructor):
         tel_mask = self.subarray.tel_ids_to_mask(self.tel_id)
         goodness_output = np.zeros(tel_mask.shape)
         goodness_output[tel_mask] =  ma.getdata(goodness_of_fit)
-        print(goodness_output)
         shower_result.goodness_of_fit = goodness_output
+
+        amplitude_output = np.zeros(tel_mask.shape)
+        impact_distance_output = np.zeros(tel_mask.shape)
+
+        amp = []
+        for i in range(len(self.tel_id)):
+            amp.append(self.hillas_parameters[i].intensity)
+        
+        amplitude_output[tel_mask] = np.array(amp)
+        shower_result.image_amplitude = amplitude_output
+        
+        impact_distance = np.sqrt((tilted.x.value - self.tel_pos_x)**2 + \
+            (tilted.y.value - self.tel_pos_y)**2)
+        impact_distance_output[tel_mask] = impact_distance
+        shower_result.impact_distance = impact_distance_output
+
         shower_result.telescopes = self.tel_id
         shower_result.is_valid = True
 
