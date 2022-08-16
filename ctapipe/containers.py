@@ -807,6 +807,9 @@ class ReconstructedGeometryContainer(Container):
         nan, "average intensity of the intensities used for reconstruction"
     )
     goodness_of_fit = Field(nan, "measure of algorithm success (if fit)")
+    impact_distance = Field(nan, "measure of algorithm success (if fit)")
+    image_amplitude = Field(nan, "measure of algorithm success (if fit)")
+
     telescopes = Field(None, "Telescopes used if stereo, or None if Mono")
 
 
