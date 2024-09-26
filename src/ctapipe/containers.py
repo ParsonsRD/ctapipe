@@ -310,6 +310,7 @@ class CameraHillasParametersContainer(BaseHillasParametersContainer):
     width = Field(nan * u.m, "standard spread along the minor-axis", unit=u.m)
     width_uncertainty = Field(nan * u.m, "uncertainty of width", unit=u.m)
     psi = Field(nan * u.deg, "rotation angle of ellipse", unit=u.deg)
+    psi_uncertainty = Field(nan * u.deg, "uncertainty of psi", unit=u.deg)
 
 
 class HillasParametersContainer(BaseHillasParametersContainer):
@@ -338,6 +339,7 @@ class HillasParametersContainer(BaseHillasParametersContainer):
     width = Field(nan * u.deg, "standard spread along the minor-axis", unit=u.deg)
     width_uncertainty = Field(nan * u.deg, "uncertainty of width", unit=u.deg)
     psi = Field(nan * u.deg, "rotation angle of ellipse", unit=u.deg)
+    psi_uncertainty = Field(nan * u.deg, "uncertainty of psi", unit=u.deg)
 
 
 class LeakageContainer(Container):
