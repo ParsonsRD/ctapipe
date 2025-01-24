@@ -110,12 +110,3 @@ Reference/API
 
 .. automodapi:: ctapipe.tools.compute_irf
     :no-inheritance-diagram:
-
-.. automodapi:: ctapipe.tools.dump_instrument
-   :no-inheritance-diagram:
-
-.. automodapi:: ctapipe.tools.calculate_pixel_stats
-   :no-inheritance-diagram:
-
-.. automodapi:: ctapipe.tools.store_astropy_cache
-   :no-inheritance-diagram:
