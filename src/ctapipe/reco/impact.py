@@ -64,6 +64,7 @@ BACKUP_PED_TABLE = {
     "SST_ASTRI_ASTRICam": 0.5,
     "MST_HESS-1_HESS-1U": 1.0,
     "LST_H.E.S.S. CT5 (876 mirrors)_H.E.S.S. CT5 with FlashCam": 1.0,
+    "dummy": 0.01,
     "UNKNOWN-960PX": 1.0,
 }
 
@@ -77,6 +78,8 @@ BACKUP_SPE_TABLE = {
     "MST_HESS-1_HESS-1U": 0.6,
     "LST_H.E.S.S. CT5 (876 mirrors)_H.E.S.S. CT5 with FlashCam": 0.6,
     "UNKNOWN-960PX": 0.6,
+        "dummy": 0.6,
+
 }
 
 # Validity bounds of the templates in degree in camera coordinates.
@@ -122,6 +125,16 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
         trait=traits.Path(exists=True, directory_ok=False, allow_none=False),
         allow_none=False,
         help=("Path to the image templates to be used in the reconstruction"),
+    ).tag(config=True)
+
+    # The SPE and pedestal width parameters are also configurable as TelescopeParameters.
+    # None is allowed and the default value. In that case, either values from the event monitoring data are used
+    # or if that is also not available, a value from a hardcoded backup dict is used.
+
+    pedestal_width = traits.FloatTelescopeParameter(
+        allow_none=True,
+        default_value=None,
+        help="Pedestal width parameter for the likelihood",
     ).tag(config=True)
 
     # The SPE and pedestal width parameters are also configurable as TelescopeParameters.
