@@ -1205,7 +1205,7 @@ class MuonParametersContainer(Container):
         nan,
         "Mean intensity of pixels inside the region limited by ring integration width and outer ring width.",
     )
-    standard_dev = Field(
+    radial_std_dev = Field(
         nan * u.deg,
         "Standard deviation of the radial light distribution.",
     )
