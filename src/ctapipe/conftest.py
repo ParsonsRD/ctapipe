@@ -905,7 +905,7 @@ def irf_event_loader_test_config():
 
     return Config(
         {
-            "EventPreprocessor": {
+            "DL2EventPreprocessor": {
                 "energy_reconstructor": "ExtraTreesRegressor",
                 "geometry_reconstructor": "HillasReconstructor",
                 "gammaness_classifier": "ExtraTreesClassifier",
@@ -936,12 +936,12 @@ def event_loader_config_path(irf_event_loader_test_config, irf_tmp_path):
 
 @pytest.fixture(scope="session")
 def irf_events_table():
-    from ctapipe.irf import EventPreprocessor
+    from ctapipe.io import DL2EventPreprocessor
 
     N1 = 1000
     N2 = 100
     N = N1 + N2
-    epp = EventPreprocessor()
+    epp = DL2EventPreprocessor()
     tab = epp.make_empty_table()
 
     ids, bulk, unitless = tab.colnames[:2], tab.colnames[2:-2], tab.colnames[-2:]
