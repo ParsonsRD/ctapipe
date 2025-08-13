@@ -22,7 +22,7 @@ class EmptyImages(Exception):
 def guess_shower_depth(energy):
     """
     Simple estimation of depth of shower max based on the expected gamma-ray elongation
-    rate.
+    rate
 
     Parameters
     ----------
