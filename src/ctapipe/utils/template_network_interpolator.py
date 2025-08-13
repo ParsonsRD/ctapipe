@@ -391,7 +391,7 @@ class TimeGradientInterpolator(BaseTemplate):
         return self.template_file == other.template_file
 
 
-def load_prediction_files_filtered(directory, telescope, species):
+def load_prediction_files_filtered(directory):
     """
     Finds all files in the given directory matching the pattern:
     predict_{telescope}_{zenith}deg_{azimuth}azm_{offset}off_{species}.keras
@@ -407,20 +407,16 @@ def load_prediction_files_filtered(directory, telescope, species):
     for filename in os.listdir(directory):
         match = pattern.match(filename)
         if match:
-            if (
-                match.group("telescope") == telescope
-                and match.group("species") == species
-            ):
-                key = (
-                    int(match.group("zenith")),
-                    int(match.group("azimuth")),
-                    float(match.group("offset")),
-                )
-                abs_path = os.path.abspath(os.path.join(directory, filename))
-                model = tf.keras.models.load_model(abs_path)
-                model.layers[-1].activation = tf.keras.activations.linear
+            key = (
+                int(match.group("zenith")),
+                int(match.group("azimuth")),
+                float(match.group("offset")),
+            )
+            abs_path = os.path.abspath(os.path.join(directory, filename))
+            model = tf.keras.models.load_model(abs_path)
+            model.layers[-1].activation = tf.keras.activations.linear
 
-                result[key] = model
+            result[key] = model
     return result
 
 
@@ -438,7 +434,7 @@ class FreePACTInterpolator(BaseTemplate):
     Class for interpolating between the FreePACT predictions
     """
 
-    def __init__(self, directory, telescope_type, species="gamma"):
+    def __init__(self, directory):
         """
         Parameters
         ----------
@@ -448,10 +444,8 @@ class FreePACTInterpolator(BaseTemplate):
 
         super().__init__()
 
-        data_input_dict = load_prediction_files_filtered(
-            directory, telescope_type, species
-        )
-        self.tel_type_string = telescope_type
+        data_input_dict = load_prediction_files_filtered(directory)
+        # self.tel_type_string = telescope_type
 
         keys = np.array(list(data_input_dict.keys()))
         values = list(data_input_dict.values())
