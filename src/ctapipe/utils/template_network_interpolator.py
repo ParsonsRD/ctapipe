@@ -96,28 +96,24 @@ class BaseTemplate:
 
             # If we are not at the edge we need to reduce the index by one
             if index != 0:
-                index -= 1
                 index_upper -= 1
-
             zenith_bound = (index, index_upper)
-
         # Do the same again for azimuth angle
         if len(self.azimuths) == 0:
             azimuth_bound = self.azimuths[0], self.azimuths[0]
         else:
-            index = np.searchsorted(self.azimuths, azimuth)
+            az_index = np.searchsorted(self.azimuths, azimuth)
             # Except in this case we need to loop back around rather than stay at the edge
-            if index != 0:
-                index -= 1
+            if az_index != 0:
+                az_index -= 1
 
-            index_upper = index
-            if index != len(self.azimuths) - 1:
-                index_upper += 1
+            az_index_upper = az_index
+            if az_index != len(self.azimuths) - 1:
+                az_index_upper += 1
             else:
-                index_upper = 0
+                az_index_upper = 0
 
-            azimuth_bound = (index, index_upper)
-
+            azimuth_bound = (az_index, az_index_upper)
         # Return our boundaries
         return zenith_bound, azimuth_bound
 
@@ -186,6 +182,7 @@ class BaseTemplate:
         v_u = self._linear_interpolation(
             zenith, self.zeniths[zl], self.zeniths[zu], v_lu, v_uu
         )
+
         # Interpolate along azimuth between the two zenith-interpolated values
         return self._linear_interpolation(
             azimuth, self.azimuths[al], self.azimuths[au], v_l, v_u
@@ -401,7 +398,7 @@ def load_prediction_files_filtered(directory):
     and the value is the absolute file path.
     """
     pattern = re.compile(
-        r"predict_(?P<telescope>[^_]+)_(?P<zenith>\d+)deg_(?P<azimuth>\d+)azm_(?P<offset>[\d\.]+)off_(?P<species>[^\.]+)\.keras"
+        r"predict_(?P<telescope>[^_]+)_(?P<zenith>\d+)deg_(?P<azimuth>\d+)deg_(?P<offset>[\d\.]+)off.keras"
     )
     result = {}
     for filename in os.listdir(directory):
@@ -415,7 +412,6 @@ def load_prediction_files_filtered(directory):
             abs_path = os.path.abspath(os.path.join(directory, filename))
             model = tf.keras.models.load_model(abs_path)
             model.layers[-1].activation = tf.keras.activations.linear
-
             result[key] = model
     return result
 
@@ -427,6 +423,39 @@ def custom_symlog(value, linear_threshold=10.0):
         np.sign(value)
         * (np.emath.logn(2, np.abs(value / linear_threshold)) + linear_threshold),
     )
+
+
+@tf.function
+def evaluate_model(model, parameters):
+    return model(parameters)
+
+
+@tf.function
+def evaluate_model_interpolate(
+    model_ul,
+    model_uu,
+    model_lu,
+    model_ll,
+    zenith,
+    azimuth,
+    zenith_u,
+    zenith_l,
+    azimuth_u,
+    azimuth_l,
+    parameters,
+):
+    v_ll = model_ll(parameters)
+    v_ul = model_ul(parameters)
+    v_lu = model_lu(parameters)
+    v_uu = model_uu(parameters)
+    # print(v_ll, zenith)
+    v_l = ((v_ul - v_ll) * (zenith - zenith_l) / (zenith_u - zenith_l)) + v_ll
+    v_u = ((v_uu - v_lu) * (zenith - zenith_l) / (zenith_u - zenith_l)) + v_lu
+
+    # Interpolate along azimuth between the two zenith-interpolated values
+    value = ((v_u - v_l) * (azimuth - azimuth_l) / (azimuth_u - azimuth_l)) + v_l
+
+    return value
 
 
 class FreePACTInterpolator(BaseTemplate):
@@ -449,10 +478,11 @@ class FreePACTInterpolator(BaseTemplate):
 
         keys = np.array(list(data_input_dict.keys()))
         values = list(data_input_dict.values())
+
         self.no_zenaz = False
 
         # First check if we even have a zen and azimuth entry
-        if len(keys[0]) > 4:
+        if len(keys) > 1:
             # If we do then for the sake of speed lets
             self._create_table_matrix(keys, values)
         else:
@@ -483,25 +513,80 @@ class FreePACTInterpolator(BaseTemplate):
 
         # Select these values from our range of keys
         selection = np.logical_and(self.keys.T[0] == zenith, self.keys.T[1] == azimuth)
+        bin_sel = np.where(selection)[0][0]
 
         # Create interpolator using this selection
         # Currently freepact is not set up for offset dependent templates.
         # Therefore remove offset (last) dimension from interpolator
-        self.interpolator[zenith_bin][azimuth_bin] = self.values[selection]
+        self.interpolator[zenith_bin][azimuth_bin] = self.values[bin_sel]
 
         # We can now remove these entries.
         self.keys = self.keys[np.invert(selection)]
-        self.values = self.values[np.invert(selection)]
+        del self.values[bin_sel]
+        # self.values = self.values[np.invert(selection)]
 
-    def _evaluate_interpolator(self, zenith_bin, azimuth_bin, interpolation_array):
+    def perform_interpolation(self, zenith, azimuth, unused, interpolation_array):
+        zenith_bounds, azimuth_bounds = self._get_bounds(zenith, azimuth)
+        zl, zu = zenith_bounds
+        al, au = azimuth_bounds
+
+        if self.interpolator[zl][al] is None:
+            self._create_interpolator(zl, al)
+        if self.interpolator[zu][au] is None:
+            self._create_interpolator(zu, au)
+        if self.interpolator[zu][al] is None:
+            self._create_interpolator(zu, al)
+        if self.interpolator[zl][au] is None:
+            self._create_interpolator(zl, au)
+
+        value = evaluate_model_interpolate(
+            self.interpolator[zu][al],
+            self.interpolator[zu][au],
+            self.interpolator[zl][au],
+            self.interpolator[zl][al],
+            tf.convert_to_tensor(
+                zenith * np.ones((interpolation_array.shape[0], 1)), dtype=tf.float32
+            ),
+            tf.convert_to_tensor(
+                azimuth * np.ones((interpolation_array.shape[0], 1)), dtype=tf.float32
+            ),
+            tf.convert_to_tensor(
+                self.zeniths[zu] * np.ones((interpolation_array.shape[0], 1)),
+                dtype=tf.float32,
+            ),
+            tf.convert_to_tensor(
+                self.zeniths[zl] * np.ones((interpolation_array.shape[0], 1)),
+                dtype=tf.float32,
+            ),
+            tf.convert_to_tensor(
+                self.azimuths[au] * np.ones((interpolation_array.shape[0], 1)),
+                dtype=tf.float32,
+            ),
+            tf.convert_to_tensor(
+                self.azimuths[al] * np.ones((interpolation_array.shape[0], 1)),
+                dtype=tf.float32,
+            ),
+            tf.convert_to_tensor(interpolation_array),
+        )
+
+        return value.numpy()  # np.asarray(value)
+
+    def _evaluate_interpolator(
+        self, zenith_bin, azimuth_bin, unused, interpolation_array
+    ):
         """
         Helper function to create and evaluate the interpolator for a given zenith and azimuth bin.
         If the interpolator does not exist, it is created.
         """
         if self.interpolator[zenith_bin][azimuth_bin] is None:
             self._create_interpolator(zenith_bin, azimuth_bin)
+        return np.asarray(
+            evaluate_model(
+                self.interpolator[zenith_bin][azimuth_bin], interpolation_array
+            )
+        )
 
-        return self.interpolator[zenith_bin][azimuth_bin].predict(interpolation_array)
+    #    return self.interpolator[zenith_bin][azimuth_bin].predict(interpolation_array, verbose=0, batch_size=10000)
 
     def __call__(self, zenith, azimuth, energy, impact, xmax, xb, yb, amplitude):
         """
@@ -522,9 +607,9 @@ class FreePACTInterpolator(BaseTemplate):
         repeat_num = xb.shape[-1]
 
         amplitude = custom_symlog(amplitude / 10, linear_threshold=2)
-        impact = np.log10(impact)
+        impact = impact / 100
         energy = np.log10(energy)
-        xmax = np.log10(xmax)
+        xmax = xmax / 100
 
         array = np.stack(
             (
@@ -539,12 +624,18 @@ class FreePACTInterpolator(BaseTemplate):
         )
 
         if self.no_zenaz:
-            interpolated_value = self.interpolator.predict(array)
+            interpolated_value = evaluate_model(self.interpolator, array).numpy()
             interpolated_value = interpolated_value.reshape(shape)
         else:
-            interpolated_value = self.perform_interpolation(zenith, azimuth, array)
+            interpolated_value = self.perform_interpolation(
+                zenith, azimuth, None, array
+            )
+            interpolated_value = interpolated_value.reshape(shape)
 
         return interpolated_value
+
+    def reset(self):
+        return True
 
 
 class DummyTemplateInterpolator:

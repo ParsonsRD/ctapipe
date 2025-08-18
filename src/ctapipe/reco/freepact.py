@@ -1,25 +1,37 @@
-"""FreePACT Reconstructor for CTAPIPE
+"""FreePACT Reconstructor for ctapipe
 This module implements the FreePACT reconstructor, which is a subclass of ImPACTReconstructor.
 It uses a neural network to predict th likelihood camera images based on the shower parameters."""
 
 import numpy as np
 import numpy.ma as ma
 
+from ctapipe.core import traits
+from ctapipe.core.telescope_component import TelescopeParameter
 from ctapipe.reco.impact import ImPACTReconstructor
 from ctapipe.utils.template_network_interpolator import FreePACTInterpolator
 
 from ..compat import COPY_IF_NEEDED
 from .impact_utilities import rotate_translate
 
+__all__ = ["FreePACTReconstructor"]
+
 
 class FreePACTReconstructor(ImPACTReconstructor):
+    image_template_path = TelescopeParameter(
+        trait=traits.Path(exists=True, directory_ok=True, allow_none=False),
+        allow_none=False,
+        help=("Path to the image templates to be used in the reconstruction"),
+    ).tag(config=True)
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
     def set_up_templates(self):
         template_sort_dict = {}
+        print("Setting up templates")
 
         for tel_id in self.subarray.tel_ids:
+            print(self.image_template_path.tel[tel_id])
             if self.image_template_path.tel[tel_id] not in template_sort_dict.keys():
                 template_sort_dict[self.image_template_path.tel[tel_id]] = [tel_id]
             else:
@@ -113,8 +125,8 @@ class FreePACTReconstructor(ImPACTReconstructor):
                     x_max_diff * np.ones_like(impact[template_mask]),
                     np.rad2deg(pix_x_rot[template_mask]),
                     np.rad2deg(pix_y_rot[template_mask]),
+                    self.image[template_mask],
                 )
-
-        likelihood = np.sum(likelihood)
+        likelihood = np.sum(likelihood) * -2
 
         return likelihood

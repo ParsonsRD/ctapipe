@@ -8,7 +8,6 @@ import numpy as np
 import numpy.ma as ma
 from astropy import units as u
 from astropy.coordinates import AltAz, SkyCoord
-from scipy.stats import norm
 
 from ctapipe.core import traits
 from ctapipe.core.telescope_component import TelescopeParameter
@@ -24,16 +23,12 @@ from ..coordinates import (
     project_to_ground,
 )
 from ..core import Provenance
-from ..fitting import lts_linear_regression
 from ..image.cleaning import dilate
 from ..image.pixel_likelihood import (
     mean_poisson_likelihood_gaussian,
     neg_log_likelihood_approx,
 )
-from ..utils.template_network_interpolator import (
-    TemplateNetworkInterpolator,
-    TimeGradientInterpolator,
-)
+from ..utils.template_network_interpolator import TemplateNetworkInterpolator
 from .impact_utilities import (
     EmptyImages,
     create_seed,
@@ -77,6 +72,8 @@ BACKUP_PED_TABLE = {
     "SST_SST_SST-Camera": 0.5,
     "SST_SST_CHEC": 0.5,
     "SST_ASTRI_ASTRICam": 0.5,
+    "MST_HESS-1_HESS-1U": 1.0,
+    "LST_H.E.S.S. CT5 (876 mirrors)_H.E.S.S. CT5 with FlashCam": 1.0,
     "UNKNOWN-960PX": 1.0,
 }
 
@@ -87,6 +84,8 @@ BACKUP_SPE_TABLE = {
     "SST_SST_SST-Camera": 0.6,
     "SST_SST_CHEC": 0.6,
     "SST_ASTRI_ASTRICam": 0.6,
+    "MST_HESS-1_HESS-1U": 0.6,
+    "LST_H.E.S.S. CT5 (876 mirrors)_H.E.S.S. CT5 with FlashCam": 0.6,
     "UNKNOWN-960PX": 0.6,
 }
 
@@ -133,14 +132,6 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
         trait=traits.Path(exists=True, directory_ok=False, allow_none=False),
         allow_none=False,
         help=("Path to the image templates to be used in the reconstruction"),
-    ).tag(config=True)
-
-    # The time gradient templates are optional, so None is allowed here
-    time_gradient_template_path = TelescopeParameter(
-        trait=traits.Path(exists=True, directory_ok=False, allow_none=True),
-        allow_none=True,
-        default_value=None,
-        help=("Path to the time gradient templates to be used in the reconstruction"),
     ).tag(config=True)
 
     # The SPE and pedestal width parameters are also configurable as TelescopeParameters.
@@ -210,7 +201,6 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
         event : container
             `ctapipe.containers.ArrayEventContainer`
         """
-
         try:
             hillas_dict = self._create_hillas_dict(event)
         except (TooFewTelescopesException, InvalidWidthException):
@@ -258,16 +248,14 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
                 )
 
             # Dilate the images around the original cleaning to help the fit
-            for _ in range(3):
+            for _ in range(4):
                 mask = dilate(self.subarray.tel[tel_id].camera.geometry, mask)
 
             mask_dict[tel_id] = mask
 
         # Next, we look for geometry and energy seeds from previously applied reconstructors.
         # Both need to be present at elast once for ImPACT to run.
-
         reco_geom_pred = event.dl2.stereo.geometry
-
         valid_geometry_seed = False
         for geom_pred in reco_geom_pred.values():
             if geom_pred.is_valid:
@@ -275,12 +263,12 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
                 break
 
         reco_energy_pred = event.dl2.stereo.energy
-
         valid_energy_seed = False
         for E_pred in reco_energy_pred.values():
             if E_pred.is_valid:
                 valid_energy_seed = True
                 break
+        valid_energy_seed = True  ## TEST
 
         if valid_geometry_seed is False or valid_energy_seed is False:
             event.dl2.stereo.geometry[self.__class__.__name__] = INVALID_GEOMETRY
@@ -307,32 +295,14 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
         self._store_impact_parameter(event)
 
     def set_up_templates(self):
+        """Set up the templates for the ImPACT reconstruction."""
         template_sort_dict = {}
-        time_template_sort_dict = {}
-
-        self.use_time_gradient = True
 
         for tel_id in self.subarray.tel_ids:
             if self.image_template_path.tel[tel_id] not in template_sort_dict.keys():
                 template_sort_dict[self.image_template_path.tel[tel_id]] = [tel_id]
             else:
                 template_sort_dict[self.image_template_path.tel[tel_id]].append(tel_id)
-
-            if self.time_gradient_template_path.tel[tel_id] is not None:
-                if (
-                    self.time_gradient_template_path.tel[tel_id]
-                    not in time_template_sort_dict.keys()
-                ):
-                    time_template_sort_dict[
-                        self.time_gradient_template_path.tel[tel_id]
-                    ] = [tel_id]
-                else:
-                    time_template_sort_dict[
-                        self.time_gradient_template_path.tel[tel_id]
-                    ].append(tel_id)
-
-            else:
-                self.use_time_gradient = False
 
         for template_path, tel_ids in template_sort_dict.items():
             net_interpolator = TemplateNetworkInterpolator(
@@ -347,20 +317,6 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
                     )
 
             self.prediction[tuple(tel_ids)] = net_interpolator
-
-        if self.use_time_gradient:
-            for template_path, tel_ids in time_template_sort_dict.items():
-                time_interpolator = TimeGradientInterpolator(template_path)
-
-                interp_tel_string = time_interpolator.tel_type_string
-
-                for id in tel_ids:
-                    if interp_tel_string != str(self.subarray.tel[id]):
-                        raise ValueError(
-                            "You are using templates that are not intended for this telescope type"
-                        )
-
-                self.time_prediction[tuple(tel_ids)] = time_interpolator
 
     def get_hillas_mean(self):
         """This is a simple function to find the peak position of each image
@@ -533,10 +489,6 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
         prediction = ma.zeros(self.image.shape)
         prediction.mask = ma.getmask(self.image)
 
-        time_gradients, time_gradients_uncertainty = (
-            np.zeros(self.image.shape[0]),
-            np.zeros(self.image.shape[0]),
-        )
         # Loop over all telescope types and get prediction
 
         for tel_ids, template in self.prediction.items():
@@ -551,49 +503,6 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
                     np.rad2deg(pix_x_rot[template_mask]),
                     np.rad2deg(pix_y_rot[template_mask]),
                 )
-
-        if self.use_time_gradient:
-            for tel_ids, time_template in self.time_prediction.items():
-                time_template_mask = self.time_template_masks[tel_ids]
-                if np.any(time_template_mask):
-                    time_pred = time_template(
-                        np.rad2deg(zenith),
-                        azimuth,
-                        energy * np.ones_like(impact[time_template_mask]),
-                        impact[time_template_mask],
-                        x_max_diff * np.ones_like(impact[time_template_mask]),
-                    )
-
-                    time_gradients[time_template_mask] = time_pred.T[0]
-                    time_gradients_uncertainty[time_template_mask] = time_pred.T[1]
-
-            time_gradients_uncertainty[time_gradients_uncertainty == 0] = 1e-6
-
-            chi2 = 0
-            for telescope_index, (image, time) in enumerate(zip(self.image, self.time)):
-                time_mask = np.logical_and(
-                    np.invert(ma.getmask(image)),
-                    time > 0,
-                )
-                time_mask = np.logical_and(time_mask, np.isfinite(time))
-                time_mask = np.logical_and(time_mask, image > 5)
-                if (
-                    np.sum(time_mask) > 3
-                    and time_gradients_uncertainty[telescope_index] > 0
-                ):
-                    time_slope = lts_linear_regression(
-                        x=np.rad2deg(pix_x_rot[telescope_index][time_mask]),
-                        y=time[time_mask],
-                        samples=3,
-                    )[0][0]
-
-                    time_like = -1 * norm.logpdf(
-                        time_slope,
-                        loc=time_gradients[telescope_index],
-                        scale=time_gradients_uncertainty[telescope_index],
-                    )
-
-                    chi2 += time_like
 
         # Likelihood function will break if we find a NaN or a 0
         prediction[np.isnan(prediction)] = 1e-8
@@ -620,8 +529,6 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
         like = np.sum(like)
 
         final_sum = like
-        if self.use_time_gradient:
-            final_sum += chi2
 
         return final_sum
 
@@ -768,11 +675,7 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
             tels_key: np.isin(list(hillas_dict.keys()), tels_key)
             for tels_key in self.prediction.keys()
         }
-        if self.use_time_gradient:
-            self.time_template_masks = {
-                tels_key: np.isin(list(hillas_dict.keys()), tels_key)
-                for tels_key in self.time_prediction.keys()
-            }
+
         # Finally run some functions to get ready for the event
         self.get_hillas_mean()
 
@@ -852,11 +755,12 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
 
             for energy_reco in energy_seed:
                 energy = energy_seed[energy_reco].energy.value
-
+                # for i in range(1):
+                # energy = 0.5 # TEST!!!
                 seed, step, limits = create_seed(
                     source_x, source_y, tilt_x, tilt_y, energy
                 )
-
+                print(source_x * 57.3, source_y * 57.3, tilt_x, tilt_y, energy)
                 # Perform maximum likelihood fit
                 fit_params_min, errors, like = self.minimise(
                     params=seed,
@@ -876,12 +780,19 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
             fit_params[0], fit_params[1], fit_params[2], fit_params[3], fit_params[4]
         )
 
-        fit_params, errors, like = self.minimise(
-            params=seed[0],
-            step=seed[1],
-            limits=seed[2],
+        # fit_params, errors, like = self.minimise(
+        #    params=seed[0],
+        #    step=seed[1],
+        #    limits=seed[2],
+        # )
+        print(
+            "Fit",
+            fit_params[0] * 57.3,
+            fit_params[1] * 57.3,
+            fit_params[2],
+            fit_params[3],
+            fit_params[4],
         )
-
         # Create a container class for reconstructed shower
 
         # Convert the best fits direction and core to Horizon and ground systems and
@@ -1016,7 +927,7 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
         _ = minimizer.migrad(iterate=MIGRAD_ITERATE)
         fit_params = minimizer.values
         errors = minimizer.errors
-
+        print(minimizer)
         return (
             (
                 fit_params["source_x"],
