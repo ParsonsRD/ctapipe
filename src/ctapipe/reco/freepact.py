@@ -17,6 +17,12 @@ __all__ = ["FreePACTReconstructor"]
 
 
 class FreePACTReconstructor(ImPACTReconstructor):
+    """
+    FreePACT Reconstructor
+    This class implements the FreePACT reconstructor, which uses a neural network
+    to predict the likelihood of camera images based on shower parameters.
+    """
+
     image_template_path = TelescopeParameter(
         trait=traits.Path(exists=True, directory_ok=True, allow_none=False),
         allow_none=False,
@@ -27,11 +33,10 @@ class FreePACTReconstructor(ImPACTReconstructor):
         super().__init__(*args, **kwargs)
 
     def set_up_templates(self):
+        """Set up the templates for the FreePACT reconstructor."""
         template_sort_dict = {}
-        print("Setting up templates")
 
         for tel_id in self.subarray.tel_ids:
-            print(self.image_template_path.tel[tel_id])
             if self.image_template_path.tel[tel_id] not in template_sort_dict.keys():
                 template_sort_dict[self.image_template_path.tel[tel_id]] = [tel_id]
             else:
@@ -128,5 +133,23 @@ class FreePACTReconstructor(ImPACTReconstructor):
                     self.image[template_mask],
                 )
         likelihood = np.sum(likelihood) * -2
+        if goodness_of_fit:
+            return likelihood / self.image.size
 
         return likelihood
+
+
+class FreePACTProtonReconstructor(FreePACTReconstructor):
+    """FreePACT Proton Reconstructor
+    This class implements the FreePACT reconstructor for proton showers.
+    It uses a neural network to predict the likelihood of camera images based on shower parameters.
+    """
+
+    image_template_path = TelescopeParameter(
+        trait=traits.Path(exists=True, directory_ok=True, allow_none=False),
+        allow_none=False,
+        help=("Path to the image templates to be used in the reconstruction"),
+    ).tag(config=True)
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)

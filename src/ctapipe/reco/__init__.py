@@ -2,7 +2,7 @@
 
 # reconstructors must be imported before ShowerProcessor, so
 # they are available there
-from .freepact import FreePACTReconstructor
+from .freepact import FreePACTProtonReconstructor, FreePACTReconstructor
 from .hillas_intersection import HillasIntersection
 from .hillas_reconstructor import HillasReconstructor
 from .impact import ImPACTReconstructor
@@ -28,6 +28,7 @@ __all__ = [
     "HillasReconstructor",
     "ImPACTReconstructor",
     "FreePACTReconstructor",
+    "FreePACTProtonReconstructor",
     "HillasIntersection",
     "EnergyRegressor",
     "ParticleClassifier",

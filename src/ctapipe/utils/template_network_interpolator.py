@@ -3,11 +3,14 @@ import os
 import pickle
 import re
 
+import numba
 import numpy as np
 import numpy.ma as ma
 import tensorflow as tf
 
 from .unstructured_interpolator import UnstructuredInterpolator
+
+tf.config.set_visible_devices([], "GPU")
 
 
 class BaseTemplate:
@@ -416,17 +419,49 @@ def load_prediction_files_filtered(directory):
     return result
 
 
+@numba.njit
 def custom_symlog(value, linear_threshold=10.0):
-    return np.where(
-        np.abs(value) < linear_threshold,
-        value,
-        np.sign(value)
-        * (np.emath.logn(2, np.abs(value / linear_threshold)) + linear_threshold),
-    )
+    """
+    Apply a symmetric logarithm transformation to the input array. This is
+    implemented using numba due to potential performance constraints.
+
+    Parameters
+    ----------
+    value: ndarray
+        Input array to transform
+    linear_threshold: float
+        Threshold below which to apply linear scaling
+    """
+    for i in range(value.shape[0]):
+        for j in range(value.shape[1]):
+            if np.abs(value[i][j]) < linear_threshold:
+                value[i][j] = value[i][j]
+            else:
+                value[i][j] = np.sign(value[i][j]) * (
+                    np.log2(np.abs(value[i][j] / linear_threshold)) + linear_threshold
+                )
+
+    return value
 
 
 @tf.function
 def evaluate_model(model, parameters):
+    """
+    Evaluate the model with the given parameters. TF decorator used to
+    execute so model is compiled into a callable TensorFlow graph.
+
+    Parameters
+    ----------
+    model: tf.keras.Model
+        The model to evaluate
+    parameters: ndarray
+        The parameters to pass to the model
+
+    Returns
+    -------
+    tf.Tensor
+        The output of the model
+    """
     return model(parameters)
 
 
@@ -444,6 +479,40 @@ def evaluate_model_interpolate(
     azimuth_l,
     parameters,
 ):
+    """
+    Evaluate the model with the given parameters in an interpolated grid. TF decorator used to
+    execute so model is compiled into a callable TensorFlow graph.
+
+    Parameters
+    ----------
+    model_ul: tf.keras.Model
+        The model to evaluate for the upper left corner
+    model_uu: tf.keras.Model
+        The model to evaluate for the upper right corner
+    model_lu: tf.keras.Model
+        The model to evaluate for the lower right corner
+    model_ll: tf.keras.Model
+        The model to evaluate for the lower left corner
+    zenith: float
+        The zenith angle to evaluate
+    azimuth: float
+        The azimuth angle to evaluate
+    zenith_u: float
+        The upper zenith bound for interpolation
+    zenith_l: float
+        The lower zenith bound for interpolation
+    azimuth_u: float
+        The upper azimuth bound for interpolation
+    azimuth_l: float
+        The lower azimuth bound for interpolation
+    parameters: ndarray
+        The parameters to pass to the model
+
+    Returns
+    -------
+    tf.Tensor
+        The output of the model
+    """
     v_ll = model_ll(parameters)
     v_ul = model_ul(parameters)
     v_lu = model_lu(parameters)
@@ -525,7 +594,26 @@ class FreePACTInterpolator(BaseTemplate):
         del self.values[bin_sel]
         # self.values = self.values[np.invert(selection)]
 
-    def perform_interpolation(self, zenith, azimuth, unused, interpolation_array):
+    def perform_interpolation(self, zenith, azimuth, interpolation_array, points):
+        """
+        Perform interpolation between template models for a given zenith and azimuth angle.
+
+        Parameters
+        ----------
+        zenith: float
+            Zenith angle in degrees
+        azimuth: float
+            Azimuth angle in degrees
+        interpolation_array: array-like
+            Empty in this case
+        points: array-like
+            Array of points to evaluate
+
+        Returns
+        -------
+        array-like
+            Interpolated values
+        """
         zenith_bounds, azimuth_bounds = self._get_bounds(zenith, azimuth)
         zl, zu = zenith_bounds
         al, au = azimuth_bounds
@@ -545,45 +633,54 @@ class FreePACTInterpolator(BaseTemplate):
             self.interpolator[zl][au],
             self.interpolator[zl][al],
             tf.convert_to_tensor(
-                zenith * np.ones((interpolation_array.shape[0], 1)), dtype=tf.float32
+                zenith * np.ones((points.shape[0], 1)), dtype=tf.float32
             ),
             tf.convert_to_tensor(
-                azimuth * np.ones((interpolation_array.shape[0], 1)), dtype=tf.float32
+                azimuth * np.ones((points.shape[0], 1)), dtype=tf.float32
             ),
             tf.convert_to_tensor(
-                self.zeniths[zu] * np.ones((interpolation_array.shape[0], 1)),
+                self.zeniths[zu] * np.ones((points.shape[0], 1)),
                 dtype=tf.float32,
             ),
             tf.convert_to_tensor(
-                self.zeniths[zl] * np.ones((interpolation_array.shape[0], 1)),
+                self.zeniths[zl] * np.ones((points.shape[0], 1)),
                 dtype=tf.float32,
             ),
             tf.convert_to_tensor(
-                self.azimuths[au] * np.ones((interpolation_array.shape[0], 1)),
+                self.azimuths[au] * np.ones((points.shape[0], 1)),
                 dtype=tf.float32,
             ),
             tf.convert_to_tensor(
-                self.azimuths[al] * np.ones((interpolation_array.shape[0], 1)),
+                self.azimuths[al] * np.ones((points.shape[0], 1)),
                 dtype=tf.float32,
             ),
-            tf.convert_to_tensor(interpolation_array),
+            tf.convert_to_tensor(points),
         )
 
         return value.numpy()  # np.asarray(value)
 
     def _evaluate_interpolator(
-        self, zenith_bin, azimuth_bin, unused, interpolation_array
+        self, zenith_bin, azimuth_bin, interpolation_array, points
     ):
         """
         Helper function to create and evaluate the interpolator for a given zenith and azimuth bin.
         If the interpolator does not exist, it is created.
+
+        Parameters
+        ----------
+        zenith_bin: int
+            Zenith bin index
+        azimuth_bin: int
+            Azimuth bin index
+        interpolation_array: array-like
+            Array of points to interpolate
+        points: array-like
+            Array of points to evaluate
         """
         if self.interpolator[zenith_bin][azimuth_bin] is None:
             self._create_interpolator(zenith_bin, azimuth_bin)
         return np.asarray(
-            evaluate_model(
-                self.interpolator[zenith_bin][azimuth_bin], interpolation_array
-            )
+            evaluate_model(self.interpolator[zenith_bin][azimuth_bin], points)
         )
 
     #    return self.interpolator[zenith_bin][azimuth_bin].predict(interpolation_array, verbose=0, batch_size=10000)
@@ -606,7 +703,7 @@ class FreePACTInterpolator(BaseTemplate):
         shape = xb.shape
         repeat_num = xb.shape[-1]
 
-        amplitude = custom_symlog(amplitude / 10, linear_threshold=2)
+        amplitude = custom_symlog(ma.getdata(amplitude) / 10, linear_threshold=2)
         impact = impact / 100
         energy = np.log10(energy)
         xmax = xmax / 100
@@ -639,16 +736,22 @@ class FreePACTInterpolator(BaseTemplate):
 
 
 class DummyTemplateInterpolator:
+    """Dummy template interpolator for testing purposes."""
+
     def __call__(self, zenith, azimuth, energy, impact, xmax, xb, yb):
         return np.ones_like(xb)
 
     def reset(self):
+        """Reset the interpolator."""
         return True
 
 
 class DummyTimeInterpolator:
+    """Dummy time interpolator for testing purposes."""
+
     def __call__(self, energy, impact, xmax):
         return np.ones_like(energy)
 
     def reset(self):
+        """Reset the interpolator."""
         return True

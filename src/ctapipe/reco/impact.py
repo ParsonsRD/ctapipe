@@ -49,16 +49,6 @@ except ModuleNotFoundError:
 
 PROV = Provenance()
 
-INVALID_GEOMETRY = ReconstructedGeometryContainer(
-    telescopes=[],
-    prefix="ImPACTReconstructor",
-)
-
-INVALID_ENERGY = ReconstructedEnergyContainer(
-    prefix="ImPACTReconstructor",
-    telescopes=[],
-)
-
 # These are settings for the iminuit minimizer
 MINUIT_ERRORDEF = 0.5  # 0.5 for a log-likelihood cost function for correct errors
 MINUIT_STRATEGY = 1  # Default minimization strategy, 2 is careful, 0 is fast
@@ -191,6 +181,17 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
 
         self.array_direction = None
         self.nominal_frame = None
+        self.site_height = self.subarray.reference_location.height.to_value(u.m)
+
+        self.INVALID_GEOMETRY = ReconstructedGeometryContainer(
+            telescopes=[],
+            prefix=self.__class__.__name__,
+        )
+
+        self.INVALID_ENERGY = ReconstructedEnergyContainer(
+            prefix=self.__class__.__name__,
+            telescopes=[],
+        )
 
     def __call__(self, event):
         """
@@ -201,11 +202,12 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
         event : container
             `ctapipe.containers.ArrayEventContainer`
         """
+
         try:
             hillas_dict = self._create_hillas_dict(event)
         except (TooFewTelescopesException, InvalidWidthException):
-            event.dl2.stereo.geometry[self.__class__.__name__] = INVALID_GEOMETRY
-            event.dl2.stereo.energy[self.__class__.__name__] = INVALID_ENERGY
+            event.dl2.stereo.geometry[self.__class__.__name__] = self.INVALID_GEOMETRY
+            event.dl2.stereo.energy[self.__class__.__name__] = self.INVALID_ENERGY
             self._store_impact_parameter(event)
             return
 
@@ -248,7 +250,7 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
                 )
 
             # Dilate the images around the original cleaning to help the fit
-            for _ in range(4):
+            for _ in range(3):
                 mask = dilate(self.subarray.tel[tel_id].camera.geometry, mask)
 
             mask_dict[tel_id] = mask
@@ -268,11 +270,10 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
             if E_pred.is_valid:
                 valid_energy_seed = True
                 break
-        valid_energy_seed = True  ## TEST
 
         if valid_geometry_seed is False or valid_energy_seed is False:
-            event.dl2.stereo.geometry[self.__class__.__name__] = INVALID_GEOMETRY
-            event.dl2.stereo.energy[self.__class__.__name__] = INVALID_ENERGY
+            event.dl2.stereo.geometry[self.__class__.__name__] = self.INVALID_GEOMETRY
+            event.dl2.stereo.energy[self.__class__.__name__] = self.INVALID_ENERGY
             self._store_impact_parameter(event)
             return
 
@@ -392,10 +393,7 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
         ) / np.sum(weight)
 
         # Add on the height of the detector above sea level
-        mean_height_asl = (
-            mean_height_above_ground
-            + self.subarray.reference_location.height.to_value(u.m)
-        )
+        mean_height_asl = mean_height_above_ground + self.site_height
 
         if mean_height_asl > 100000 or np.isnan(mean_height_asl):
             mean_height_asl = 100000
@@ -730,6 +728,8 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
         for cleaning in shower_seed:
             # Copy all of our seed parameters out of the shower objects
             # We need to convert the shower direction to the nominal system
+            if cleaning == "FreePACTReconstructor":
+                continue
             horizon_seed = SkyCoord(
                 az=shower_seed[cleaning].az,
                 alt=shower_seed[cleaning].alt,
@@ -754,13 +754,18 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
             zenith = 90 * u.deg - self.array_direction.alt
 
             for energy_reco in energy_seed:
+                # We need to convert the shower direction to the nominal system
+
+                if energy_reco == "FreePACTReconstructor":
+                    continue
                 energy = energy_seed[energy_reco].energy.value
+
                 # for i in range(1):
                 # energy = 0.5 # TEST!!!
                 seed, step, limits = create_seed(
                     source_x, source_y, tilt_x, tilt_y, energy
                 )
-                print(source_x * 57.3, source_y * 57.3, tilt_x, tilt_y, energy)
+
                 # Perform maximum likelihood fit
                 fit_params_min, errors, like = self.minimise(
                     params=seed,
@@ -773,7 +778,7 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
                     like_min = like
 
         if fit_params is None:
-            return INVALID_GEOMETRY, INVALID_ENERGY
+            return self.INVALID_GEOMETRY, self.INVALID_ENERGY
 
         # Now do full minimisation
         seed = create_seed(
@@ -785,14 +790,7 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
         #    step=seed[1],
         #    limits=seed[2],
         # )
-        print(
-            "Fit",
-            fit_params[0] * 57.3,
-            fit_params[1] * 57.3,
-            fit_params[2],
-            fit_params[3],
-            fit_params[4],
-        )
+
         # Create a container class for reconstructed shower
 
         # Convert the best fits direction and core to Horizon and ground systems and
@@ -927,7 +925,7 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
         _ = minimizer.migrad(iterate=MIGRAD_ITERATE)
         fit_params = minimizer.values
         errors = minimizer.errors
-        print(minimizer)
+
         return (
             (
                 fit_params["source_x"],
