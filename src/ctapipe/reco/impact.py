@@ -263,7 +263,7 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
                 )
 
             # Dilate the images around the original cleaning to help the fit
-            for _ in range(3):
+            for _ in range(4):
                 mask = dilate(self.subarray.tel[tel_id].camera.geometry, mask)
 
             mask_dict[tel_id] = mask
@@ -415,7 +415,6 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
         slant_depth = self.atmosphere_profile.slant_depth_from_height(
             mean_height_asl * u.m, zen * u.rad
         )
-
         return slant_depth.to_value(u.g / (u.cm * u.cm))
 
     def get_likelihood(
@@ -908,6 +907,7 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
         -------
         tuple: best fit parameters and errors
         """
+
         limits = np.asarray(limits)
 
         energy = params[4]
@@ -920,7 +920,7 @@ class ImPACTReconstructor(HillasGeometryReconstructor):
             source_y=params[1],
             core_x=params[2],
             core_y=params[3],
-            energy=energy,
+            energy=energy / 0.8,
             x_max_scale=xmax_scale,
             goodness_of_fit=False,
         )

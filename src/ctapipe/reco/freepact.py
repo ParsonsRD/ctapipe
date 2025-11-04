@@ -4,6 +4,7 @@ It uses a neural network to predict th likelihood camera images based on the sho
 
 import numpy as np
 import numpy.ma as ma
+from iminuit import Minuit
 
 from ctapipe.core import traits
 from ctapipe.core.telescope_component import TelescopeParameter
@@ -132,11 +133,101 @@ class FreePACTReconstructor(ImPACTReconstructor):
                     np.rad2deg(pix_y_rot[template_mask]),
                     self.image[template_mask],
                 )
-        likelihood = np.sum(likelihood) * -2
         if goodness_of_fit:
-            return likelihood / self.image.size
+            # return -2 * np.sum(likelihood[self.image>5]) / np.sum(self.image>5)
+            # print(ma.getmask(self.image))
+            return -2 * ma.sum(likelihood) / np.sum(~ma.getmask(self.image))
+
+        likelihood = ma.sum(likelihood) * -2
 
         return likelihood
+
+    def get_likelihood_min(self, x):
+        """Wrapper to allow minimization with scipy
+        Parameters
+        ----------
+        x: ndarray
+            Array of parameters in the order:
+            [source_x, source_y, core_x, core_y, energy, x_max_scale]
+        Returns
+            -------
+            float: Likelihood the model represents the camera image at this position
+        """
+        return self.get_likelihood(x[0], x[1], x[2], x[3], x[4], x[5], False)
+
+    def minimise(
+        self,
+        params,
+        step,
+        limits,
+    ):
+        """
+
+        Parameters
+        ----------
+        params: ndarray
+            Seed parameters for fit
+        step: ndarray
+            Initial step size in the fit
+        limits: ndarray
+            Fit bounds
+        Returns
+        -------
+        tuple: best fit parameters and errors
+        """
+        limits = np.asarray(limits)
+
+        energy = params[4]
+        xmax_scale = 1
+
+        # minimizer_kwargs = {"method": "L-BFGS-B", "options": {"maxiter": 50}}
+        # print(limits)
+        # ret = differential_evolution(self.get_likelihood_min,  bounds=limits[:-1])
+        # print(ret)
+        # Now do the minimisation proper
+        minimizer = Minuit(
+            self.get_likelihood,
+            source_x=params[0],
+            source_y=params[1],
+            core_x=params[2],
+            core_y=params[3],
+            energy=energy,
+            x_max_scale=xmax_scale,
+            goodness_of_fit=False,
+        )
+        # This time leave everything free
+        minimizer.fixed = [False, False, False, False, False, False, True]
+        minimizer.errors = step
+        minimizer.limits = limits
+        minimizer.errordef = 1
+
+        # Tighter fit tolerances
+        minimizer.tol *= 100
+        minimizer.strategy = 1
+        # Fit and output parameters and errors
+        _ = minimizer.migrad(iterate=1)
+        fit_params = minimizer.values
+        errors = minimizer.errors
+
+        return (
+            (
+                fit_params["source_x"],
+                fit_params["source_y"],
+                fit_params["core_x"],
+                fit_params["core_y"],
+                fit_params["energy"],
+                fit_params["x_max_scale"],
+            ),
+            (
+                errors["source_x"],
+                errors["source_y"],
+                errors["core_x"],
+                errors["core_x"],
+                errors["energy"],
+                errors["x_max_scale"],
+            ),
+            minimizer.fval,
+        )
 
 
 class FreePACTProtonReconstructor(FreePACTReconstructor):
