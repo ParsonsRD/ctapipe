@@ -88,6 +88,8 @@ def _chord_length(radius, rho, phi, phi0):
     if discriminant_norm < 0:
         return 0
 
+    effective_chord_length = 0
+
     if rho <= 1.0:
         # muon has hit the mirror
         effective_chord_length = radius * (np.sqrt(discriminant_norm) + rho * cos_phi)
